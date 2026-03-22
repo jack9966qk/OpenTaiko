@@ -182,12 +182,6 @@ internal class CStage起動 : CStage {
 				#endregion
 			} else if (OpenTaiko.ConfigIsNew && !bLanguageSelected) // Prompt language selection if Config.ini is newly generated
 			{
-				// On iOS, auto-select English since there's no keyboard
-				if (OperatingSystem.IsIOS()) {
-					OpenTaiko.ConfigIni.sLang = CLangManager.intToLang(0);
-					CLangManager.langAttach(OpenTaiko.ConfigIni.sLang);
-					bLanguageSelected = true;
-				}
 				HBlackBackdrop.Draw();
 
 				int x = langSelectOffset[0];
@@ -224,11 +218,6 @@ internal class CStage起動 : CStage {
 				if (es != null && es.IsSongListEnumCompletelyDone)                          // 曲リスト作成が終わったら
 				{
 					OpenTaiko.Songs管理 = (es != null) ? es.Songs管理 : null;      // 最後に、曲リストを拾い上げる
-
-					// On iOS, auto-proceed since there's no keyboard
-					if (OperatingSystem.IsIOS()) {
-						return 1;
-					}
 
 					if (OpenTaiko.InputManager.Keyboard.KeyPressed((int)SlimDXKeys.Key.Return)
 						|| OpenTaiko.Pad.bPressed(EInstrumentPad.Drums, EPad.Decide)

@@ -158,17 +158,6 @@ internal class CStageTitle : CStage {
 
 			if (base.ePhaseID == CStage.EPhase.Common_NORMAL)    // プラグインの入力占有がない
 			{
-				// iOS: Auto-select Game Start and transition to song select (first launch only)
-				if (OperatingSystem.IsIOS() && bモード選択 && !_iOSAutoProgressDone) {
-					_iOSAutoProgressFrames++;
-					if (_iOSAutoProgressFrames > 5) {
-						_iOSAutoProgressDone = true;
-						n現在の選択行モード選択 = 0; // Game Start
-						this.actFO.tフェードアウト開始(0, 500);
-						base.ePhaseID = CStage.EPhase.Common_FADEOUT;
-					}
-				}
-
 				if (OpenTaiko.InputManager.Keyboard.KeyPressed((int)SlimDXKeys.Key.Escape) || OpenTaiko.Pad.bPressed(EInstrumentPad.Drums, EPad.Cancel)) {
 					if (bモード選択) {
 						OpenTaiko.Skin.soundCancelSFX.tPlay();
@@ -898,8 +887,6 @@ internal class CStageTitle : CStage {
 	//-----------------
 
 	private ScriptBG Background;
-	private int _iOSAutoProgressFrames;
-	private static bool _iOSAutoProgressDone;
 
 	// Directly propose the different game options if the save file is already loaded, go back to save file select by pressing "Escape"
 	private void SkipSaveFileStep() {
