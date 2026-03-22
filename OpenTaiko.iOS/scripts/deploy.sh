@@ -9,6 +9,7 @@
 #   --timeout N   Seconds to stream console output before exiting (default: 10, 0=unlimited)
 #   --release     Build in Release mode (AOT compiled, faster but slower build)
 #   --bundle-id ID  Override bundle identifier (default: from .csproj)
+#   --verbose     Pipe full build log to stdout instead of filtering
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
@@ -21,6 +22,7 @@ SCREENSHOT=""
 WAIT=20
 TIMEOUT=10
 CONFIG="Debug"
+VERBOSE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -32,6 +34,7 @@ while [[ $# -gt 0 ]]; do
     --timeout)    TIMEOUT="$2"; shift 2 ;;
     --release)    CONFIG="Release"; shift ;;
     --bundle-id)  BUNDLE_ID="$2"; shift 2 ;;
+    --verbose)    VERBOSE=true; shift ;;
     *) echo "Unknown option: $1"; exit 1 ;;
   esac
 done
@@ -69,9 +72,13 @@ if $BUILD; then
   fi
 
   echo "==> Building ($CONFIG)..."
-  dotnet build "$CSPROJ" -c "$CONFIG" -r iossimulator-arm64 "${BUNDLE_ID_ARG[@]}" 2>&1 \
-    | grep -E "(error CS|Error\(s\)|Build succeeded)" \
-    | tail -5
+  if $VERBOSE; then
+    dotnet build "$CSPROJ" -c "$CONFIG" -r iossimulator-arm64 "${BUNDLE_ID_ARG[@]}"
+  else
+    dotnet build "$CSPROJ" -c "$CONFIG" -r iossimulator-arm64 "${BUNDLE_ID_ARG[@]}" 2>&1 \
+      | grep -E "(error CS|Error\(s\)|Build succeeded)" \
+      | tail -5
+  fi
 fi
 
 # Terminate existing instance
