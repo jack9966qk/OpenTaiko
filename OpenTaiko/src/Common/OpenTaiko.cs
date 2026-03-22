@@ -399,7 +399,7 @@ internal class OpenTaiko : Game {
 	/// When true, iOS auto-advances through startup, title, and song select screens.
 	/// Set to false to require manual navigation through all screens.
 	/// </summary>
-	public static bool iOSAutoAdvanceUI = true;
+	public static bool iOSAutoAdvanceUI = false;
 
 	public void MountStage(CStage Stage) {
 		Stage.Activate();
