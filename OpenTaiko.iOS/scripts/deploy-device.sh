@@ -10,6 +10,7 @@
 #   --release     Build in Release mode (AOT compiled, faster but slower build)
 #   --bundle-id ID  Override bundle identifier (default: from .csproj)
 #   --identity NAME Codesign identity (default: auto-detect "Apple Development")
+#   --verbose     Stream full build log to stdout instead of filtering
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 source "OpenTaiko.iOS/scripts/_signing-helpers.sh"
@@ -25,6 +26,7 @@ CLEAN=false
 BUILD=true
 TIMEOUT=30
 CONFIG="Debug"
+VERBOSE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -37,6 +39,7 @@ while [[ $# -gt 0 ]]; do
     --release)    CONFIG="Release"; shift ;;
     --bundle-id)  BUNDLE_ID="$2"; shift 2 ;;
     --identity)   IDENTITY="$2"; shift 2 ;;
+    --verbose)    VERBOSE=true; shift ;;
     *) echo "Unknown option: $1"; exit 1 ;;
   esac
 done
@@ -96,15 +99,26 @@ if $BUILD; then
   echo "==> Building for ios-arm64 ($CONFIG)..."
   BUILD_LOG=$(mktemp)
   trap "rm -f $BUILD_LOG" EXIT
-  dotnet build "$CSPROJ" \
-    -c "$CONFIG" \
-    -r ios-arm64 \
-    -p:RuntimeIdentifier=ios-arm64 \
-    -p:CodesignKey="$IDENTITY" \
-    -p:CodesignProvision="" \
-    "${BUNDLE_ID_ARG[@]}" \
-    > "$BUILD_LOG" 2>&1 || true
-  { grep -E "(error CS|error MT|Error\(s\)|Build succeeded|NETSDK|Codesign)" "$BUILD_LOG" || true; } | tail -10
+  if $VERBOSE; then
+    dotnet build "$CSPROJ" \
+      -c "$CONFIG" \
+      -r ios-arm64 \
+      -p:RuntimeIdentifier=ios-arm64 \
+      -p:CodesignKey="$IDENTITY" \
+      -p:CodesignProvision="" \
+      "${BUNDLE_ID_ARG[@]}" \
+      2>&1 | tee "$BUILD_LOG" || true
+  else
+    dotnet build "$CSPROJ" \
+      -c "$CONFIG" \
+      -r ios-arm64 \
+      -p:RuntimeIdentifier=ios-arm64 \
+      -p:CodesignKey="$IDENTITY" \
+      -p:CodesignProvision="" \
+      "${BUNDLE_ID_ARG[@]}" \
+      > "$BUILD_LOG" 2>&1 || true
+    { grep -E "(error CS|error MT|Error\(s\)|Build succeeded|NETSDK|Codesign)" "$BUILD_LOG" || true; } | tail -10
+  fi
 
   # Check build actually succeeded
   if [[ ! -d "$APP_PATH" ]]; then
