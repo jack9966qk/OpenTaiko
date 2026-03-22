@@ -7,6 +7,7 @@ public abstract class CInputButtonsBase : IInputDevice, IDisposable {
 
 	public CInputButtonsBase(int nButtonStates) {
 		this.ButtonStates = new (bool, int)[nButtonStates];
+		this._pendingPress = new bool[nButtonStates];
 		this.EventBuffer = new List<STInputEvent>(nButtonStates);
 		this.InputEvents = [];
 	}
@@ -41,7 +42,12 @@ public abstract class CInputButtonsBase : IInputDevice, IDisposable {
 	}
 
 	protected void ProcessButtonState(int idxBtn, long msTimestamp) {
-		if (ButtonStates[idxBtn].isPressed) {
+		// If a press occurred and was released before polling, treat as pressed this frame.
+		// The release will be detected on the next poll.
+		bool effectivelyPressed = ButtonStates[idxBtn].isPressed || _pendingPress[idxBtn];
+		_pendingPress[idxBtn] = false;
+
+		if (effectivelyPressed) {
 			if (ButtonStates[idxBtn].state >= 1) {
 				ButtonStates[idxBtn].state = 2;
 			} else {
@@ -85,6 +91,7 @@ public abstract class CInputButtonsBase : IInputDevice, IDisposable {
 			this.AddPressedEvent(idxBtn, SoundManager.PlayTimer.msGetPreciseNowSoundTimerTime());
 		}
 		this.ButtonStates[idxBtn].isPressed = true;
+		this._pendingPress[idxBtn] = true;
 	}
 
 	protected void ButtonUp(int idxBtn) {
@@ -128,6 +135,7 @@ public abstract class CInputButtonsBase : IInputDevice, IDisposable {
 	//-----------------
 	public List<STInputEvent> EventBuffer;
 	public (bool isPressed, int state)[] ButtonStates { get; protected set; }
+	private bool[] _pendingPress;
 	private bool IsDisposed;
 	//-----------------
 	#endregion
