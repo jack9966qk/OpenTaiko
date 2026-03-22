@@ -325,15 +325,11 @@ public class GameViewController : UIViewController {
 
 	private double _lastTimestamp;
 	private int _lastDrumVisual = -1;
-	private int _lastDrumHit = -1;
-
 	private void OnFrame() {
 		// Rebuild touch overlay if drum size settings changed
-		int currentVisual = global::OpenTaiko.OpenTaiko.ConfigIni?.nTouchDrumVisual ?? 28;
-		int currentHit = global::OpenTaiko.OpenTaiko.ConfigIni?.nTouchDrumHit ?? 35;
-		if (currentVisual != _lastDrumVisual || currentHit != _lastDrumHit) {
+		int currentVisual = global::OpenTaiko.OpenTaiko.ConfigIni?.nTouchDrumVisual ?? 30;
+		if (currentVisual != _lastDrumVisual) {
 			_lastDrumVisual = currentVisual;
-			_lastDrumHit = currentHit;
 			_touchOverlay?.RemoveFromSuperview();
 			CreateTouchOverlay();
 		}
@@ -364,13 +360,11 @@ public class GameViewController : UIViewController {
 	// Escape zone (normalized coords)
 	private static readonly CGRect EscapeZone = new CGRect(0, 0, 0.10, 0.15);
 
-	// Don circle: large semicircle centered at bottom edge, top half visible
-	// Center is at (0.5, 1.0), radius chosen so ~upper half is on screen
+	// Don circle: large semicircle centered below bottom edge, top portion visible
 	private const double DonCenterX = 0.5;
-	private const double DonCenterY = 1.2;
-	// Visual and hit radius read from ConfigIni at runtime
-	private double DonRadius => (global::OpenTaiko.OpenTaiko.ConfigIni?.nTouchDrumVisual ?? 28) / 100.0;
-	private double DonHitRadius => (global::OpenTaiko.OpenTaiko.ConfigIni?.nTouchDrumHit ?? 35) / 100.0;
+	private const double DonCenterY = 1.05;
+	// Single radius for both visual and hit detection
+	private double DonRadius => (global::OpenTaiko.OpenTaiko.ConfigIni?.nTouchDrumVisual ?? 30) / 100.0;
 
 	private UIView? _touchOverlay;
 	private readonly Dictionary<IntPtr, long> _activeTouches = new();
@@ -399,10 +393,10 @@ public class GameViewController : UIViewController {
 		escView.ClipsToBounds = true;
 		_touchOverlay.AddSubview(escView);
 
-		// Don circle — centered at bottom edge, clipped to show top half
+		// Don circle — centered below bottom edge, clipped to show top portion
 		var r = DonRadius * w;
 		var cx = DonCenterX * w;
-		var cy = h; // bottom edge
+		var cy = DonCenterY * h;
 		var donView = new UIView(new CGRect(cx - r, cy - r, r * 2, r * 2));
 		donView.BackgroundColor = UIColor.FromRGBA(0xFF, 0x44, 0x44, 0x20);
 		donView.Layer.CornerRadius = (nfloat)r;
@@ -425,10 +419,10 @@ public class GameViewController : UIViewController {
 			return HID_ESC;
 		}
 
-		// Check Don circle in pixel space (hit radius slightly larger than visual)
+		// Check Don circle in pixel space
 		double dx = location.X - DonCenterX * w;
 		double dy = location.Y - DonCenterY * h;
-		double r = DonHitRadius * w;
+		double r = DonRadius * w;
 
 		bool isLeft = location.X < w * 0.5;
 

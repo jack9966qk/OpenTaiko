@@ -3,7 +3,9 @@
 # Usage: ./OpenTaiko.iOS/scripts/deploy-device.sh [options]
 #   --clean       Uninstall existing app first (fresh Documents directory)
 #   --no-build    Skip the build step
-#   --device ID   Target a specific device (default: auto-detect)
+#   --device ID   Target a specific device for devicectl (default: auto-detect)
+#   --udid UDID   Target a specific device for ideviceinstaller
+#   --imobile     Use ideviceinstaller instead of devicectl (for jailbroken/older devices)
 #   --timeout N   Seconds to stream console output before exiting (default: 30, 0=unlimited)
 #   --release     Build in Release mode (AOT compiled, faster but slower build)
 set -euo pipefail
@@ -12,6 +14,8 @@ cd "$(dirname "$0")/../.."
 APP_ID="com.opentaiko.OpenTaiko"
 APP_PATH="OpenTaiko.iOS/bin/Debug/net8.0-ios/ios-arm64/OpenTaiko.iOS.app"
 DEVICE=""
+UDID=""
+IMOBILE=false
 CLEAN=false
 BUILD=true
 TIMEOUT=30
@@ -22,6 +26,8 @@ while [[ $# -gt 0 ]]; do
     --clean)      CLEAN=true; shift ;;
     --no-build)   BUILD=false; shift ;;
     --device)     DEVICE="$2"; shift 2 ;;
+    --udid)       UDID="$2"; IMOBILE=true; shift 2 ;;
+    --imobile)    IMOBILE=true; shift ;;
     --timeout)    TIMEOUT="$2"; shift 2 ;;
     --release)    CONFIG="Release"; shift ;;
     *) echo "Unknown option: $1"; exit 1 ;;
@@ -31,16 +37,27 @@ done
 APP_PATH="OpenTaiko.iOS/bin/${CONFIG}/net8.0-ios/ios-arm64/OpenTaiko.iOS.app"
 
 # Auto-detect device if not specified
-if [[ -z "$DEVICE" ]]; then
-  DEVICE=$(xcrun devicectl list devices 2>/dev/null | grep -E '[A-F0-9]{8}-[A-F0-9]{4}-' | grep -vi simulator | awk '{for(i=1;i<=NF;i++) if($i ~ /^[A-F0-9]{8}-/) print $i}' | head -1)
-  if [[ -z "$DEVICE" ]]; then
-    echo "No iOS device found. Connect a device and trust this Mac."
-    echo ""
-    echo "Available devices:"
-    xcrun devicectl list devices 2>&1
-    exit 1
+if $IMOBILE; then
+  if [[ -z "$UDID" ]]; then
+    UDID=$(idevice_id -l 2>/dev/null | head -1)
+    if [[ -z "$UDID" ]]; then
+      echo "No device found via idevice_id."
+      exit 1
+    fi
+    echo "==> Found device (libimobiledevice): $UDID"
   fi
-  echo "==> Found device: $DEVICE"
+else
+  if [[ -z "$DEVICE" ]]; then
+    DEVICE=$(xcrun devicectl list devices 2>/dev/null | grep -E 'available.*paired' | awk '{for(i=1;i<=NF;i++) if($i ~ /^[A-F0-9]{8}-/) print $i}' | head -1)
+    if [[ -z "$DEVICE" ]]; then
+      echo "No device found via devicectl. Use --imobile for libimobiledevice."
+      echo ""
+      echo "Available devices:"
+      xcrun devicectl list devices 2>&1
+      exit 1
+    fi
+    echo "==> Found device: $DEVICE"
+  fi
 fi
 
 # Build for physical device
@@ -81,26 +98,57 @@ if $BUILD; then
   fi
 fi
 
-# Optionally clean install
-if $CLEAN; then
-  echo "==> Uninstalling previous app..."
-  xcrun devicectl device uninstall app --device "$DEVICE" "$APP_ID" 2>/dev/null || true
-fi
+if $IMOBILE; then
+  # --- ideviceinstaller path ---
 
-# Install
-echo "==> Installing on device..."
-xcrun devicectl device install app --device "$DEVICE" "$APP_PATH" 2>&1 | tail -3
+  UDID_FLAG=()
+  if [[ -n "$UDID" ]]; then
+    UDID_FLAG=(-u "$UDID")
+  fi
 
-# Launch
-if [[ "$TIMEOUT" -eq 0 ]]; then
-  echo "==> Launching (console output below, Ctrl-C to stop)..."
-  xcrun devicectl device process launch --device "$DEVICE" --console "$APP_ID" 2>&1
+  # Optionally clean install
+  if $CLEAN; then
+    echo "==> Uninstalling previous app..."
+    ideviceinstaller "${UDID_FLAG[@]}" uninstall "$APP_ID" 2>/dev/null || true
+  fi
+
+  # ideviceinstaller requires an .ipa — package .app into a temp one
+  IPA_TMP=$(mktemp -d)
+  trap "rm -rf $IPA_TMP" EXIT
+  mkdir -p "$IPA_TMP/Payload"
+  cp -R "$APP_PATH" "$IPA_TMP/Payload/"
+  (cd "$IPA_TMP" && zip -qr app.ipa Payload)
+
+  echo "==> Installing via ideviceinstaller..."
+  ideviceinstaller "${UDID_FLAG[@]}" install "$IPA_TMP/app.ipa"
+
+  echo "==> Installed. Launch the app manually on the device."
+  echo "    (ideviceinstaller does not support remote launch)"
+
 else
-  echo "==> Launching (showing ${TIMEOUT}s of console output)..."
-  xcrun devicectl device process launch --device "$DEVICE" --console "$APP_ID" 2>&1 &
-  CONSOLE_PID=$!
-  sleep "$TIMEOUT"
-  kill "$CONSOLE_PID" 2>/dev/null || true
-  wait "$CONSOLE_PID" 2>/dev/null || true
-  echo "==> Console timeout reached."
+  # --- devicectl path ---
+
+  # Optionally clean install
+  if $CLEAN; then
+    echo "==> Uninstalling previous app..."
+    xcrun devicectl device uninstall app --device "$DEVICE" "$APP_ID" 2>/dev/null || true
+  fi
+
+  # Install
+  echo "==> Installing on device..."
+  xcrun devicectl device install app --device "$DEVICE" "$APP_PATH" 2>&1 | tail -3
+
+  # Launch
+  if [[ "$TIMEOUT" -eq 0 ]]; then
+    echo "==> Launching (console output below, Ctrl-C to stop)..."
+    xcrun devicectl device process launch --device "$DEVICE" --console "$APP_ID" 2>&1
+  else
+    echo "==> Launching (showing ${TIMEOUT}s of console output)..."
+    xcrun devicectl device process launch --device "$DEVICE" --console "$APP_ID" 2>&1 &
+    CONSOLE_PID=$!
+    sleep "$TIMEOUT"
+    kill "$CONSOLE_PID" 2>/dev/null || true
+    wait "$CONSOLE_PID" 2>/dev/null || true
+    echo "==> Console timeout reached."
+  fi
 fi
