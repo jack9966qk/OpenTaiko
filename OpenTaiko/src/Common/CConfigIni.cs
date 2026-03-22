@@ -1118,8 +1118,7 @@ internal class CConfigIni : INotifyPropertyChanged {
 	public int nAILevel = 4;
 	public bool bAIBattleMode = false;
 	public int nControllerDeadzone = 50;
-	public int nTouchDrumVisual = 28; // Don visual radius as percentage of screen width (10-50)
-	public int nTouchDrumHit = 35;    // Don hit zone radius as percentage of screen width (10-50)
+	public int nTouchDrumVisual = 30; // Don radius as percentage of screen width (10-50)
 
 	public CAIPerformances[] apAIPerformances = {
 		new CAIPerformances(500, 400, 100, 7, 200),
@@ -2139,9 +2138,8 @@ internal class CConfigIni : INotifyPropertyChanged {
 		sw.WriteLine("; Can be between 10% and 90%.");
 		sw.WriteLine("ControllerDeadzone={0}", this.nControllerDeadzone);
 		sw.WriteLine();
-		sw.WriteLine("; Touch drum visual and hit zone radii as percentage of screen width (10-50).");
+		sw.WriteLine("; Touch drum radius as percentage of screen width (10-50).");
 		sw.WriteLine("TouchDrumVisual={0}", this.nTouchDrumVisual);
-		sw.WriteLine("TouchDrumHit={0}", this.nTouchDrumHit);
 		sw.WriteLine();
 		sw.WriteLine("; リザルト画像自動保存機能(0:OFF, 1:ON)"); // #25399 2011.6.9 yyagi
 		sw.WriteLine("; Set \"1\" if you'd like to save result screen image automatically"); //
@@ -2947,7 +2945,7 @@ internal class CConfigIni : INotifyPropertyChanged {
 				this.nTouchDrumVisual = CConversion.ParseIntInRange(value, 10, 50, this.nTouchDrumVisual);
 				break;
 			case "TouchDrumHit":
-				this.nTouchDrumHit = CConversion.ParseIntInRange(value, 10, 50, this.nTouchDrumHit);
+				// Legacy: ignored, unified with TouchDrumVisual
 				break;
 			case "PolyphonicSounds":
 				this.nPoliphonicSounds = CConversion.ParseIntInRange(value, 1, 8, this.nPoliphonicSounds);
