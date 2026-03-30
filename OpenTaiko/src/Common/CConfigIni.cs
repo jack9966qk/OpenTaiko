@@ -1118,6 +1118,8 @@ internal class CConfigIni : INotifyPropertyChanged {
 	public int nAILevel = 4;
 	public bool bAIBattleMode = false;
 	public int nControllerDeadzone = 50;
+	public int nTouchDrumVisual = 28; // Don visual radius as percentage of screen width (10-50)
+	public int nTouchDrumHit = 35;    // Don hit zone radius as percentage of screen width (10-50)
 
 	public CAIPerformances[] apAIPerformances = {
 		new CAIPerformances(500, 400, 100, 7, 200),
@@ -1505,6 +1507,7 @@ internal class CConfigIni : INotifyPropertyChanged {
 	#region[System]
 
 	public bool bDirectShowMode;
+	public bool bEnableLua;
 
 	#endregion
 
@@ -1751,6 +1754,7 @@ internal class CConfigIni : INotifyPropertyChanged {
 
 		this.eLaneType = ELaneType.TypeA;
 		this.bDirectShowMode = false;
+		this.bEnableLua = true;
 
 		#endregion
 
@@ -2135,6 +2139,10 @@ internal class CConfigIni : INotifyPropertyChanged {
 		sw.WriteLine("; Can be between 10% and 90%.");
 		sw.WriteLine("ControllerDeadzone={0}", this.nControllerDeadzone);
 		sw.WriteLine();
+		sw.WriteLine("; Touch drum visual and hit zone radii as percentage of screen width (10-50).");
+		sw.WriteLine("TouchDrumVisual={0}", this.nTouchDrumVisual);
+		sw.WriteLine("TouchDrumHit={0}", this.nTouchDrumHit);
+		sw.WriteLine();
 		sw.WriteLine("; リザルト画像自動保存機能(0:OFF, 1:ON)"); // #25399 2011.6.9 yyagi
 		sw.WriteLine("; Set \"1\" if you'd like to save result screen image automatically"); //
 		sw.WriteLine("; when you get hiscore/hiskill."); //
@@ -2168,6 +2176,9 @@ internal class CConfigIni : INotifyPropertyChanged {
 		sw.WriteLine("; 動画再生にDirectShowを使うことによって、再生時の負担を軽減できます。");
 		sw.WriteLine("; ただし使用時にはセットアップが必要になるのでご注意ください。");
 		sw.WriteLine("DirectShowMode={0}", this.bDirectShowMode ? 1 : 0);
+		sw.WriteLine();
+		sw.WriteLine("; Enable Lua scripting for skin backgrounds and modules.");
+		sw.WriteLine("EnableLua={0}", this.bEnableLua ? 1 : 0);
 		sw.WriteLine();
 
 		#region [ Adjust ]
@@ -2932,6 +2943,12 @@ internal class CConfigIni : INotifyPropertyChanged {
 			case "ControllerDeadzone":
 				this.nControllerDeadzone = CConversion.ParseIntInRange(value, 10, 90, this.nControllerDeadzone);
 				break;
+			case "TouchDrumVisual":
+				this.nTouchDrumVisual = CConversion.ParseIntInRange(value, 10, 50, this.nTouchDrumVisual);
+				break;
+			case "TouchDrumHit":
+				this.nTouchDrumHit = CConversion.ParseIntInRange(value, 10, 50, this.nTouchDrumHit);
+				break;
 			case "PolyphonicSounds":
 				this.nPoliphonicSounds = CConversion.ParseIntInRange(value, 1, 8, this.nPoliphonicSounds);
 				break;
@@ -2965,6 +2982,9 @@ internal class CConfigIni : INotifyPropertyChanged {
 			case "DirectShowMode":
 				this.bDirectShowMode = CConversion.bONorOFF(value[0]);
 				;
+				break;
+			case "EnableLua":
+				this.bEnableLua = CConversion.bONorOFF(value[0]);
 				break;
 			case nameof(this.TJAP3FolderMode):
 				this.TJAP3FolderMode = CConversion.bONorOFF(value[0]);

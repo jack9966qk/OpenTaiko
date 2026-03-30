@@ -161,18 +161,26 @@ class CLuaScript : IDisposable {
 		return TitleTextureKey.ResolveTitleTexture(titleTextureKey, vertical, keepCenter);
 	}
 
+	public bool IsAvailable { get; private set; }
+
 	public CLuaScript(string dir, string? texturesDir = null, string? soundsDir = null, bool loadAssets = true) {
 		strDir = dir;
 		strTexturesDir = texturesDir ?? $"{dir}/Textures";
 		strSounsdDir = soundsDir ?? $"{dir}/Sounds";
 
+		if (OpenTaiko.ConfigIni != null && !OpenTaiko.ConfigIni.bEnableLua) {
+			IsAvailable = false;
+			bCrashed = true;
+			return;
+		}
 
-		LuaScript = new Lua();
-		LuaScript.LoadCLRPackage();
-		LuaScript.State.Encoding = Encoding.UTF8;
-		LuaSecurity.Secure(LuaScript);
+		IsAvailable = true;
 
 		try {
+			LuaScript = new Lua();
+			LuaScript.LoadCLRPackage();
+			LuaScript.State.Encoding = Encoding.UTF8;
+			LuaSecurity.Secure(LuaScript);
 			LuaScript.DoFile($"{strDir}/Script.lua");
 
 			LuaScript["info"] = luaInfo = new CLuaInfo(strDir);
@@ -226,7 +234,7 @@ class CLuaScript : IDisposable {
 		}
 		listDisposables.Clear();
 
-		LuaScript.Dispose();
+		LuaScript?.Dispose();
 
 		bDisposed = true;
 		bLoadedAssets = false;

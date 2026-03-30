@@ -40,6 +40,10 @@ public class CSoundTimer : CTimerBase {
 					}
 				}
 			}
+			if (this.Device.SoundDeviceType == ESoundDeviceType.Unknown) {
+				// iOS (CSoundDeviceNull): no sound device, use system time
+				return Game.TimeMs;
+			}
 			return CTimerBase.UnusedNum;
 		}
 	}

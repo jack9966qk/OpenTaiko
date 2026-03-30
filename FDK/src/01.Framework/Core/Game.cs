@@ -19,6 +19,7 @@
 * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 * THE SOFTWARE.
 */
+using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using FDK;
@@ -280,6 +281,12 @@ public abstract class Game : IDisposable {
 		MainThreadID = Thread.CurrentThread.ManagedThreadId;
 		Configuration();
 
+		if (OperatingSystem.IsIOS()) {
+			// iOS: Window and GL context are managed externally by the host UIViewController.
+			// The host calls InitWithExternalContext() and drives the game loop directly.
+			return;
+		}
+
 		//GlfwProvider.GLFW.Value.WindowHint(WindowHintContextApi.ContextCreationApi, ContextApi.EglContextApi);
 
 		WindowOptions options = WindowOptions.Default;
@@ -348,11 +355,106 @@ public abstract class Game : IDisposable {
 	/// Performs application-defined tasks associated with freeing, releasing, or resetting unmanaged resources.
 	/// </summary>
 	public void Dispose() {
-		Window_.Dispose();
+		if (!OperatingSystem.IsIOS())
+			Window_?.Dispose();
 	}
 
 	public void Exit() {
+		if (OperatingSystem.IsIOS()) {
+			// iOS: signal the host to stop the game loop
+			IsExiting = true;
+			return;
+		}
 		Window_.Close();
+	}
+
+	/// <summary>
+	/// Set to true when the game requests exit on iOS (where there is no window to close).
+	/// The iOS host should check this flag and stop the CADisplayLink loop.
+	/// </summary>
+	public bool IsExiting { get; private set; }
+
+	/// <summary>
+	/// Initializes the GL context and game systems using an externally-provided GL context.
+	/// Used on iOS where the window and GL surface are managed by the host UIViewController.
+	/// </summary>
+	public void InitWithExternalContext(Silk.NET.Core.Contexts.IGLContext externalContext, int viewportWidth, int viewportHeight) {
+		Context = externalContext;
+		Context.MakeCurrent();
+
+		Gl = GL.GetApi(Context);
+
+		Gl.Enable(GLEnum.Blend);
+		BlendHelper.SetBlend(BlendType.Normal);
+		CTexture.Init();
+
+		{
+			var err = Gl.GetError();
+			Console.WriteLine($"[OpenTaiko] CTexture.Init() GL error: 0x{(int)err:X} ({err})");
+		}
+
+		Gl.ClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+		Window_Resize(new Vector2D<int>(viewportWidth, viewportHeight));
+
+		Context.SwapInterval(VSync ? 1 : 0);
+
+		Initialize();
+		LoadContent();
+	}
+
+	private long _iosStartTimeMs;
+	private bool _iosTimeInitialized;
+
+	/// <summary>
+	/// Called by the iOS host each frame from CADisplayLink.
+	/// Drives both Update() and Render() in a single call.
+	/// </summary>
+	private int _iosFrameCount;
+
+	public void iOSFrame(double deltaTime) {
+		if (!_iosTimeInitialized) {
+			_iosStartTimeMs = Stopwatch.GetTimestamp();
+			_iosTimeInitialized = true;
+		}
+		TimeMs = (Stopwatch.GetTimestamp() - _iosStartTimeMs) * 1000 / Stopwatch.Frequency;
+
+		Update();
+
+		Camera = Matrix4X4<float>.Identity;
+		if (AsyncActions.Count > 0) {
+			AsyncActions[0]?.Invoke();
+			AsyncActions.Remove(AsyncActions[0]);
+		}
+
+		Gl.ClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+		Gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+
+		Draw();
+
+		// Periodic GL error check
+		if (_iosFrameCount++ % 300 == 0) {
+			var err = Gl.GetError();
+			Console.WriteLine($"[OpenTaiko] Frame {_iosFrameCount}: glErr=0x{(int)err:X} ({err}), TimeMs={TimeMs}");
+		}
+
+		Context.SwapBuffers();
+	}
+
+	/// <summary>
+	/// Called by the iOS host when the app is shutting down.
+	/// </summary>
+	public void iOSShutdown() {
+		CTexture.Terminate();
+		UnloadContent();
+		OnExiting();
+		Context.Dispose();
+	}
+
+	/// <summary>
+	/// Called by the iOS host when the viewport size changes (e.g. rotation).
+	/// </summary>
+	public void iOSResize(int width, int height) {
+		Window_Resize(new Vector2D<int>(width, height));
 	}
 
 	protected void ToggleWindowMode() {
@@ -386,6 +488,11 @@ public abstract class Game : IDisposable {
 	/// Runs the game.
 	/// </summary>
 	public void Run() {
+		if (OperatingSystem.IsIOS()) {
+			// iOS: the game loop is driven externally by CADisplayLink.
+			// Run() is a no-op; the host calls InitWithExternalContext() then iOSFrame() each frame.
+			return;
+		}
 		Window_.Run();
 	}
 

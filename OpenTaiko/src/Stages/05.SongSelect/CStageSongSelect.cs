@@ -343,15 +343,26 @@ internal class CStageSongSelect : CStage {
 
 		base.ReleaseManagedResource();
 	}
+	private int _iosSongSelectDrawCount;
+	private int _iOSAutoSelectFrames;
+	private enum EiOSAutoState { WaitInit, OpenBox, WaitBox, FindSong, SelectSong, Done }
+	private EiOSAutoState _iOSAutoState = EiOSAutoState.WaitInit;
 	public override int Draw() {
 		if (!base.IsDeActivated) {
+			if (OperatingSystem.IsIOS() && _iosSongSelectDrawCount++ < 3) {
+				Console.WriteLine($"[OpenTaiko] SongSelect.Draw #{_iosSongSelectDrawCount}: phase={base.ePhaseID}, bg={OpenTaiko.Tx.SongSelect_Background?.Pointer}, bgSize={OpenTaiko.Tx.SongSelect_Background?.szTextureSize.Width}x{OpenTaiko.Tx.SongSelect_Background?.szTextureSize.Height}");
+				if (_iosSongSelectDrawCount == 1) CTexture.ResetDrawDebugCount();
+			}
 			this.ct背景スクロール用タイマー.TickLoop();
 			this.ctOldBGScroll.TickLoop();
 			#region [ 初めての進行描画 ]
 			//---------------------
 			if (base.IsFirstDraw) {
 				this.ct登場時アニメ用共通 = new CCounter(0, 100, 3, OpenTaiko.Timer);
-				if (OpenTaiko.rPreviousStage == OpenTaiko.stageResults) {
+				if (OperatingSystem.IsIOS()) {
+					// iOS: skip fade-in
+					base.ePhaseID = CStage.EPhase.Common_NORMAL;
+				} else if (OpenTaiko.rPreviousStage == OpenTaiko.stageResults) {
 					this.actFIfrom結果画面.tフェードイン開始();
 					base.ePhaseID = CStage.EPhase.SongSelect_FadeInFromResults;
 				} else {
@@ -364,6 +375,55 @@ internal class CStageSongSelect : CStage {
 			//---------------------
 			#endregion
 
+			#region [ iOS auto-progression into gameplay ]
+			if (OperatingSystem.IsIOS() && _iOSAutoState != EiOSAutoState.Done && base.ePhaseID == CStage.EPhase.Common_NORMAL) {
+				_iOSAutoSelectFrames++;
+				switch (_iOSAutoState) {
+					case EiOSAutoState.WaitInit:
+						if (_iOSAutoSelectFrames > 10 && this.actSongList.rCurrentlySelectedSong != null) {
+							Console.WriteLine($"[OpenTaiko] iOS auto-select: node={actSongList.rCurrentlySelectedSong.nodeType}, title={actSongList.rCurrentlySelectedSong.ldTitle?.GetString("")}");
+							if (actSongList.rCurrentlySelectedSong.nodeType == CSongListNode.ENodeType.BOX) {
+								_iOSAutoState = EiOSAutoState.OpenBox;
+							} else if (actSongList.rCurrentlySelectedSong.nodeType == CSongListNode.ENodeType.SCORE) {
+								_iOSAutoState = EiOSAutoState.SelectSong;
+							} else {
+								Console.WriteLine($"[OpenTaiko] iOS auto-select: unexpected node type, aborting");
+								_iOSAutoState = EiOSAutoState.Done;
+							}
+						}
+						break;
+					case EiOSAutoState.OpenBox:
+						// Directly open the box without animation
+						actSongList.tOpenBOX();
+						actSongList.tバーの初期化();
+						tNotifySelectedSongChange();
+						_iOSAutoSelectFrames = 0;
+						_iOSAutoState = EiOSAutoState.FindSong;
+						Console.WriteLine("[OpenTaiko] iOS auto-select: opened BOX");
+						break;
+					case EiOSAutoState.FindSong:
+						if (_iOSAutoSelectFrames > 5 && actSongList.rCurrentlySelectedSong != null) {
+							Console.WriteLine($"[OpenTaiko] iOS auto-select: after BOX node={actSongList.rCurrentlySelectedSong.nodeType}");
+							if (actSongList.rCurrentlySelectedSong.nodeType == CSongListNode.ENodeType.SCORE) {
+								_iOSAutoState = EiOSAutoState.SelectSong;
+							} else if (actSongList.rCurrentlySelectedSong.nodeType == CSongListNode.ENodeType.BACKBOX) {
+								// Skip backbox — scroll down to find a song
+								actSongList.t次に移動();
+								_iOSAutoSelectFrames = 0; // wait a few more frames
+							} else {
+								Console.WriteLine("[OpenTaiko] iOS auto-select: no SCORE found, aborting");
+								_iOSAutoState = EiOSAutoState.Done;
+							}
+						}
+						break;
+					case EiOSAutoState.SelectSong:
+						Console.WriteLine($"[OpenTaiko] iOS auto-select: selecting song, difficulty=0");
+						this.t曲を選択する(0, 0); // Select easiest difficulty for player 0
+						_iOSAutoState = EiOSAutoState.Done;
+						break;
+				}
+			}
+			#endregion
 
 			ctTimer.Tick();
 			ctCreditAnime.TickLoop();
@@ -1180,6 +1240,7 @@ internal class CStageSongSelect : CStage {
 					}
 					return (int)this.eフェードアウト完了時の戻り値;
 			}
+
 		}
 		return 0;
 	}

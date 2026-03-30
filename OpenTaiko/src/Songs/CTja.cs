@@ -844,16 +844,14 @@ internal class CTja : CActivity {
 				}
 				CSound sound = wc.rSound[index];
 				if (sound != null) {
-					sound.PlaySpeed = OpenTaiko.ConfigIni.SongPlaybackSpeed;
-					// 再生速度によって、WASAPI/ASIOで使う使用mixerが決まるため、付随情報の設定(音量/PAN)は、再生速度の設定後に行う
-
-					// 2018-08-27 twopointzero - DON'T attempt to load (or queue scanning) loudness metadata here.
-					//                           This code is called right after loading the .tja, and that code
-					//                           will have just made such an attempt.
-					OpenTaiko.SongGainController.Set(wc.SongVol, wc.SongLoudnessMetadata, sound);
-
-					sound.SoundPosition = wc.n位置;
-					sound.PlayStart();
+					try {
+						sound.PlaySpeed = OpenTaiko.ConfigIni.SongPlaybackSpeed;
+						OpenTaiko.SongGainController?.Set(wc.SongVol, wc.SongLoudnessMetadata, sound);
+						sound.SoundPosition = wc.n位置;
+						sound.PlayStart();
+					} catch (Exception ex) {
+						Trace.TraceWarning($"Chip playback error: {ex.Message}");
+					}
 				}
 				wc.n再生開始時刻[wc.n現在再生中のサウンド番号] = n再生開始システム時刻ms;
 				this.tWave再生位置自動補正(wc);
@@ -925,7 +923,7 @@ internal class CTja : CActivity {
 		this.strFolderPath = Path.GetDirectoryName(this.strFullPath) + Path.DirectorySeparatorChar;
 
 		// Unique ID parsing/generation
-		this.uniqueID = new CSongUniqueID(this.strFolderPath + @$"{Path.DirectorySeparatorChar}uniqueID.json");
+		this.uniqueID = new CSongUniqueID(Path.Combine(this.strFolderPath, "uniqueID.json"));
 
 		try {
 			this.nPlayerSide = nPlayerSide;

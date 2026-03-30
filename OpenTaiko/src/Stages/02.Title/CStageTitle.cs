@@ -28,6 +28,14 @@ internal class CStageTitle : CStage {
 		try {
 			UnloadSaveFile();
 
+			// iOS: Auto-select save file and skip to mode selection
+			if (OperatingSystem.IsIOS()) {
+				OpenTaiko.SaveFile = 0;
+				bSaveFileLoaded = true;
+				for (int i = 0; i < 2; i++)
+					OpenTaiko.NamePlate.tNamePlateRefreshTitles(i);
+			}
+
 			this.PuchiChara.IdleAnimation();
 
 			SkipSaveFileStep();
@@ -114,7 +122,10 @@ internal class CStageTitle : CStage {
 			#region [ 初めての進行描画 ]
 			//---------------------
 			if (base.IsFirstDraw) {
-				if (OpenTaiko.rPreviousStage == OpenTaiko.stageStartup) {
+				if (OperatingSystem.IsIOS()) {
+					// iOS: skip fade-in, go straight to normal phase
+					base.ePhaseID = CStage.EPhase.Common_NORMAL;
+				} else if (OpenTaiko.rPreviousStage == OpenTaiko.stageStartup) {
 					this.actFIfromSetup.tフェードイン開始();
 					base.ePhaseID = CStage.EPhase.Title_FadeIn;
 				} else {
@@ -147,6 +158,17 @@ internal class CStageTitle : CStage {
 
 			if (base.ePhaseID == CStage.EPhase.Common_NORMAL)    // プラグインの入力占有がない
 			{
+				// iOS: Auto-select Game Start and transition to song select (first launch only)
+				if (OperatingSystem.IsIOS() && bモード選択 && !_iOSAutoProgressDone) {
+					_iOSAutoProgressFrames++;
+					if (_iOSAutoProgressFrames > 5) {
+						_iOSAutoProgressDone = true;
+						n現在の選択行モード選択 = 0; // Game Start
+						this.actFO.tフェードアウト開始(0, 500);
+						base.ePhaseID = CStage.EPhase.Common_FADEOUT;
+					}
+				}
+
 				if (OpenTaiko.InputManager.Keyboard.KeyPressed((int)SlimDXKeys.Key.Escape) || OpenTaiko.Pad.bPressed(EInstrumentPad.Drums, EPad.Cancel)) {
 					if (bモード選択) {
 						OpenTaiko.Skin.soundCancelSFX.tPlay();
@@ -876,6 +898,8 @@ internal class CStageTitle : CStage {
 	//-----------------
 
 	private ScriptBG Background;
+	private int _iOSAutoProgressFrames;
+	private static bool _iOSAutoProgressDone;
 
 	// Directly propose the different game options if the save file is already loaded, go back to save file select by pressing "Escape"
 	private void SkipSaveFileStep() {

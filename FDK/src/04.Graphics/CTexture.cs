@@ -423,6 +423,9 @@ public class CTexture : IDisposable {
 		MakeTexture(bitmap, b黒を透過する);
 	}
 
+	private static int _texDebugCount;
+	private static int _maxTextureSize = 0;
+
 	private unsafe uint GenTexture(void* data, uint width, uint height, PixelFormat pixelFormat) {
 		//テクスチャハンドルの作成-----
 		uint handle = Game.Gl.GenTexture();
@@ -430,7 +433,18 @@ public class CTexture : IDisposable {
 		//-----
 
 		//テクスチャのデータをVramに送る
-		if (OperatingSystem.IsMacOS()) {
+		if (OperatingSystem.IsIOS()) {
+			// iOS ES 2.0: use unsized GL_RGBA as internalformat with GL_BGRA_EXT format
+			// (Apple's GL_APPLE_texture_format_BGRA8888 requires GL_RGBA internalformat)
+			int internalFormat = pixelFormat switch {
+				PixelFormat.Bgra => (int)InternalFormat.Rgba,
+				PixelFormat.Rgba => (int)InternalFormat.Rgba,
+				PixelFormat.Rgb => (int)InternalFormat.Rgb,
+				_ => (int)InternalFormat.Rgba
+			};
+
+			Game.Gl.TexImage2D(TextureTarget.Texture2D, 0, internalFormat, width, height, 0, pixelFormat, GLEnum.UnsignedByte, data);
+		} else if (OperatingSystem.IsMacOS()) {
 			// Desktop OpenGL requires sized internal formats
 			int internalFormat = pixelFormat switch {
 				PixelFormat.Bgra => (int)InternalFormat.Rgba8,
@@ -438,17 +452,25 @@ public class CTexture : IDisposable {
 				PixelFormat.Rgb => (int)InternalFormat.Rgb8,
 				_ => (int)InternalFormat.Rgba8
 			};
-			
+
 			Game.Gl.TexImage2D(TextureTarget.Texture2D, 0, internalFormat, width, height, 0, pixelFormat, GLEnum.UnsignedByte, data);
 		} else {
 			// OpenGL ES allows unsized internal formats
 			Game.Gl.TexImage2D(TextureTarget.Texture2D, 0, (int)pixelFormat, width, height, 0, pixelFormat, GLEnum.UnsignedByte, data);
 		}
+
+		if (OperatingSystem.IsIOS() && _texDebugCount++ < 10) {
+			var err = Game.Gl.GetError();
+			Console.WriteLine($"[OpenTaiko] GenTexture: handle={handle}, {width}x{height}, fmt={pixelFormat}, glErr=0x{(int)err:X}");
+		}
 		//-----
 
 		//拡大縮小の時の補完を指定------
-		Game.Gl.TexParameterI(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest); //この場合は補完しない
-		Game.Gl.TexParameterI(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMinFilter.Nearest);
+		Game.Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest); //この場合は補完しない
+		Game.Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMinFilter.Nearest);
+		// iOS/GLES 2.0: NPOT textures require CLAMP_TO_EDGE, otherwise they are incomplete
+		Game.Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)GLEnum.ClampToEdge);
+		Game.Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)GLEnum.ClampToEdge);
 		//------
 
 		Game.Gl.BindTexture(TextureTarget.Texture2D, 0); //バインドを解除することを忘れないように
@@ -460,6 +482,25 @@ public class CTexture : IDisposable {
 		try {
 			if (bitmap == null) {
 				bitmap = new SKBitmap(10, 10);
+			}
+
+			// Scale down if bitmap exceeds GL_MAX_TEXTURE_SIZE
+			if (_maxTextureSize == 0) {
+				_maxTextureSize = Game.Gl.GetInteger(GLEnum.MaxTextureSize);
+				if (_maxTextureSize <= 0) _maxTextureSize = 4096;
+				Console.WriteLine($"[OpenTaiko] GL_MAX_TEXTURE_SIZE = {_maxTextureSize}");
+			}
+			SKBitmap scaledBitmap = null;
+			if (bitmap.Width > _maxTextureSize || bitmap.Height > _maxTextureSize) {
+				float scale = Math.Min((float)_maxTextureSize / bitmap.Width, (float)_maxTextureSize / bitmap.Height);
+				int newW = Math.Max(1, (int)(bitmap.Width * scale));
+				int newH = Math.Max(1, (int)(bitmap.Height * scale));
+				scaledBitmap = new SKBitmap(newW, newH);
+				using (var canvas = new SKCanvas(scaledBitmap)) {
+					canvas.DrawBitmap(bitmap, new SKRect(0, 0, newW, newH));
+				}
+				Console.WriteLine($"[OpenTaiko] Texture downscaled: {bitmap.Width}x{bitmap.Height} -> {newW}x{newH} (max={_maxTextureSize})");
+				bitmap = scaledBitmap;
 			}
 
 			unsafe {
@@ -485,6 +526,8 @@ public class CTexture : IDisposable {
 			this.sz画像サイズ = new Size(bitmap.Width, bitmap.Height);
 			this.rc全画像 = new Rectangle(0, 0, this.sz画像サイズ.Width, this.sz画像サイズ.Height);
 			this.szTextureSize = this.t指定されたサイズを超えない最適なテクスチャサイズを返す(this.sz画像サイズ);
+
+			scaledBitmap?.Dispose();
 		} catch {
 			this.Dispose();
 			// throw new CTextureCreateFailedException( string.Format( "テクスチャの生成に失敗しました。\n{0}", strファイル名 ) );
@@ -764,8 +807,51 @@ public class CTexture : IDisposable {
 			Game.Gl.DrawElements(PrimitiveType.Triangles, IndicesCount, DrawElementsType.UnsignedInt, (void*)0);//描画!
 		}
 
+		if (OperatingSystem.IsIOS() && _drawDebugCount++ < 30) {
+			var err = Game.Gl.GetError();
+			Console.WriteLine($"[OpenTaiko] Draw#{_drawDebugCount}: tex={Pointer}, err=0x{(int)err:X}, opacity={_opacity}, color=({color4.Red:F1},{color4.Green:F1},{color4.Blue:F1},{color4.Alpha:F1}), size={szTextureSize.Width}x{szTextureSize.Height}");
+		}
+
 		BlendHelper.SetBlend(BlendType.Normal);
 	}
+	private static int _drawDebugCount;
+	public static void ResetDrawDebugCount() { _drawDebugCount = 0; }
+
+	/// <summary>
+	/// Creates a solid-color test texture for debugging. Color bytes: R, G, B, A.
+	/// </summary>
+	public static CTexture CreateSolidColorTexture(byte r, byte g, byte b, byte a, int width, int height) {
+		var tex = new CTexture();
+		byte[] pixels = new byte[width * height * 4];
+		for (int i = 0; i < width * height; i++) {
+			// BGRA byte order (matching PixelFormat.Bgra)
+			pixels[i * 4 + 0] = b;
+			pixels[i * 4 + 1] = g;
+			pixels[i * 4 + 2] = r;
+			pixels[i * 4 + 3] = a;
+		}
+		unsafe {
+			fixed (byte* data = pixels) {
+				uint handle = Game.Gl.GenTexture();
+				Game.Gl.BindTexture(TextureTarget.Texture2D, handle);
+				int internalFormat = OperatingSystem.IsIOS() ? (int)InternalFormat.Rgba : (int)InternalFormat.Rgba8;
+				Game.Gl.TexImage2D(TextureTarget.Texture2D, 0, internalFormat, (uint)width, (uint)height, 0, PixelFormat.Bgra, GLEnum.UnsignedByte, data);
+				Game.Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMinFilter, (int)TextureMinFilter.Nearest);
+				Game.Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureMagFilter, (int)TextureMinFilter.Nearest);
+				Game.Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapS, (int)GLEnum.ClampToEdge);
+				Game.Gl.TexParameter(GLEnum.Texture2D, GLEnum.TextureWrapT, (int)GLEnum.ClampToEdge);
+				Game.Gl.BindTexture(TextureTarget.Texture2D, 0);
+				tex.Pointer = handle;
+				var err = Game.Gl.GetError();
+				Console.WriteLine($"[OpenTaiko] CreateSolidColorTexture: ptr={handle}, {width}x{height}, RGBA=({r},{g},{b},{a}), err=0x{(int)err:X}");
+			}
+		}
+		tex.sz画像サイズ = new System.Drawing.Size(width, height);
+		tex.rc全画像 = new System.Drawing.Rectangle(0, 0, width, height);
+		tex.szTextureSize = new System.Drawing.Size(width, height);
+		return tex;
+	}
+
 	public void t2D描画(int x, int y, float depth, Rectangle rc画像内の描画領域) {
 		t2D描画((float)x, (float)y, depth, rc画像内の描画領域);
 	}

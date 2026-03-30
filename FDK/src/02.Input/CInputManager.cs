@@ -16,6 +16,8 @@ public class CInputManager : IDisposable {
 		get;
 		private set;
 	}
+	private static readonly IInputDevice _nullDevice = new CInputNull();
+
 	public IInputDevice Keyboard {
 		get {
 			if (this._Keyboard != null) {
@@ -27,7 +29,7 @@ public class CInputManager : IDisposable {
 					return device;
 				}
 			}
-			return null;
+			return _nullDevice;
 		}
 	}
 	public IInputDevice Mouse {
@@ -41,7 +43,7 @@ public class CInputManager : IDisposable {
 					return device;
 				}
 			}
-			return null;
+			return _nullDevice;
 		}
 	}
 	public float Deadzone = 0.5f;
@@ -50,6 +52,19 @@ public class CInputManager : IDisposable {
 	// Constructor
 	public CInputManager(IWindow window, bool useBufferedInput, bool bUseMidiIn = true, float gamepad_deadzone = 0.5f) {
 		Initialize(window, useBufferedInput, bUseMidiIn, gamepad_deadzone);
+	}
+
+	/// <summary>
+	/// iOS constructor: no Silk.NET window/input context, just registers external input devices (touch).
+	/// </summary>
+	public CInputManager(IEnumerable<IInputDevice> externalDevices) {
+		this.InputDevices = new List<IInputDevice>(externalDevices);
+		Trace.TraceInformation("Found {0} Input Device{1}", InputDevices.Count, InputDevices.Count != 1 ? "s:" : ":");
+		for (int i = 0; i < InputDevices.Count; i++) {
+			try {
+				Trace.TraceInformation("Input Device #" + i + " (" + InputDevices[i].CurrentType.ToString() + " - " + InputDevices[i].Name + ")");
+			} catch { }
+		}
 	}
 
 	public void Initialize(IWindow window, bool useBufferedInput, bool bUseMidiIn, float controller_deadzone) {
@@ -225,7 +240,7 @@ public class CInputManager : IDisposable {
 					this.InputDevices.Clear();
 				}
 
-				Context.Dispose();
+				Context?.Dispose();
 			}
 			this.bDisposed済み = true;
 		}

@@ -180,6 +180,25 @@ public class SoundManager   // : CSound
 		//bUseOSTimer = false;
 		tInitialize(soundDeviceType, nSoundDelayBASS, nSoundDelayExclusiveWASAPI, nSoundDelayASIO, nASIODevice, _bUseOSTimer);
 	}
+
+	/// <summary>
+	/// iOS constructor: attempts BASS audio, falls back to null device.
+	/// </summary>
+	public SoundManager() {
+		SoundDevice = null;
+		try {
+			SoundUpdatePeriodBASS = 100;
+			tInitialize(ESoundDeviceType.Bass, 10, 0, 0, 0, true);
+		} catch (Exception ex) {
+			Trace.TraceWarning($"BASS init failed on iOS, falling back to null device: {ex.Message}");
+		}
+		if (SoundDevice == null || PlayTimer == null) {
+			SoundDevice = new CSoundDeviceNull();
+			SoundDeviceType = ESoundDeviceType.Unknown;
+			PlayTimer = new CSoundTimer(SoundDevice);
+			bUseOSTimer = true;
+		}
+	}
 	public void Dispose() {
 		t終了();
 	}
@@ -337,9 +356,16 @@ public class SoundManager   // : CSound
 		}
 
 		if (SoundDeviceType == ESoundDeviceType.Unknown) {
+			if (OperatingSystem.IsIOS())
+				return null;
 			throw new Exception(string.Format("未対応の SoundDeviceType です。[{0}]", SoundDeviceType.ToString()));
 		}
-		return SoundDevice.tCreateSound(filename, soundGroup);
+		try {
+			return SoundDevice.tCreateSound(filename, soundGroup);
+		} catch (Exception ex) {
+			Trace.TraceWarning($"Failed to create sound: {System.IO.Path.GetFileName(filename)}: {ex.Message}");
+			return null;
+		}
 	}
 
 	private static DateTime lastUpdateTime = DateTime.MinValue;
