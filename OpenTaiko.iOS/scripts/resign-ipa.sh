@@ -4,25 +4,26 @@
 # Usage: ./OpenTaiko.iOS/scripts/resign-ipa.sh --input FILE [options]
 #   --input FILE          Input .ipa file (required)
 #   --output FILE         Output .ipa path (default: input path with -signed suffix)
-#   --identity NAME       Codesign identity (default: "Apple Development")
-#   --profile FILE        Provisioning profile (.mobileprovision) to embed
+#   --identity NAME       Codesign identity (default: auto-detect "Apple Development")
+#   --profile FILE        Provisioning profile (default: auto-detect from installed profiles)
 #   --bundle-id ID        Override the bundle identifier in Info.plist
 #   --entitlements FILE   Custom entitlements plist (auto-extracted from profile if omitted)
 #
 # Examples:
-#   # Resign with default development identity, auto-detect profile
-#   ./OpenTaiko.iOS/scripts/resign-ipa.sh --input OpenTaiko.ipa --profile dev.mobileprovision
+#   # Resign with auto-detected identity and profile
+#   ./OpenTaiko.iOS/scripts/resign-ipa.sh --input OpenTaiko.ipa
 #
 #   # Resign with a specific identity and custom bundle ID
 #   ./OpenTaiko.iOS/scripts/resign-ipa.sh --input OpenTaiko.ipa \
-#     --identity "Apple Distribution" --profile dist.mobileprovision \
-#     --bundle-id com.example.OpenTaiko
+#     --identity "Apple Distribution" --bundle-id com.example.OpenTaiko
 
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/_signing-helpers.sh"
 
 INPUT=""
 OUTPUT=""
-IDENTITY="Apple Development"
+IDENTITY=""
 PROFILE=""
 BUNDLE_ID=""
 ENTITLEMENTS=""
@@ -50,16 +51,6 @@ if [[ ! -f "$INPUT" ]]; then
   exit 1
 fi
 
-if [[ -z "$PROFILE" ]]; then
-  echo "Error: --profile is required (path to .mobileprovision file)."
-  exit 1
-fi
-
-if [[ ! -f "$PROFILE" ]]; then
-  echo "Error: Provisioning profile not found: $PROFILE"
-  exit 1
-fi
-
 # Default output: input-signed.ipa
 if [[ -z "$OUTPUT" ]]; then
   OUTPUT="${INPUT%.ipa}-signed.ipa"
@@ -81,10 +72,33 @@ fi
 APP_NAME=$(basename "$APP_BUNDLE")
 echo "==> Found app: $APP_NAME"
 
-# Override bundle ID if requested
+# Determine the effective bundle ID (override or read from app)
 if [[ -n "$BUNDLE_ID" ]]; then
+  EFFECTIVE_BUNDLE_ID="$BUNDLE_ID"
   echo "==> Setting bundle ID to: $BUNDLE_ID"
   /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$APP_BUNDLE/Info.plist"
+else
+  EFFECTIVE_BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_BUNDLE/Info.plist" 2>/dev/null)
+  echo "==> Bundle ID: $EFFECTIVE_BUNDLE_ID"
+fi
+
+# Auto-detect signing identity if not provided
+if [[ -z "$IDENTITY" ]]; then
+  echo "==> Auto-detecting signing identity..."
+  IDENTITY=$(find_codesign_identity "Apple Development")
+  echo "    Found: $IDENTITY"
+fi
+
+# Auto-detect provisioning profile if not provided
+if [[ -z "$PROFILE" ]]; then
+  echo "==> Auto-detecting provisioning profile for $EFFECTIVE_BUNDLE_ID..."
+  PROFILE=$(find_provisioning_profile "$EFFECTIVE_BUNDLE_ID")
+  echo "    Found: $(basename "$PROFILE")"
+fi
+
+if [[ ! -f "$PROFILE" ]]; then
+  echo "Error: Provisioning profile not found: $PROFILE"
+  exit 1
 fi
 
 # Embed provisioning profile
