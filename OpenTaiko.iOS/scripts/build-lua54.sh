@@ -76,6 +76,8 @@ cat > "$INFOPLIST" << 'PLIST'
   <string>5.4.6</string>
   <key>CFBundlePackageType</key>
   <string>FMWK</string>
+  <key>MinimumOSVersion</key>
+  <string>14.0</string>
 </dict>
 </plist>
 PLIST
