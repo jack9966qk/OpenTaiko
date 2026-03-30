@@ -7,6 +7,7 @@
 #   --output PATH     Output .ipa path (default: OpenTaiko.iOS/dist/OpenTaiko.ipa)
 #   --team-id ID      Apple Developer Team ID (default: 8LW2EYFXQD)
 #   --bundle-id ID    Override bundle identifier
+#   --identity NAME   Codesign identity (default: auto-detect "Apple Distribution")
 #   --api-key FILE    App Store Connect API key (.p8) for upload
 #   --api-issuer ID   App Store Connect API issuer ID
 #   --api-key-id ID   App Store Connect API key ID
@@ -20,11 +21,13 @@
 
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+source "OpenTaiko.iOS/scripts/_signing-helpers.sh"
 
 CSPROJ="OpenTaiko.iOS/OpenTaiko.iOS.csproj"
 OUTPUT="OpenTaiko.iOS/dist/OpenTaiko.ipa"
 TEAM_ID="8LW2EYFXQD"
 BUNDLE_ID=""
+IDENTITY=""
 BUILD=true
 UPLOAD=true
 API_KEY=""
@@ -38,6 +41,7 @@ while [[ $# -gt 0 ]]; do
     --output)       OUTPUT="$2"; shift 2 ;;
     --team-id)      TEAM_ID="$2"; shift 2 ;;
     --bundle-id)    BUNDLE_ID="$2"; shift 2 ;;
+    --identity)     IDENTITY="$2"; shift 2 ;;
     --api-key)      API_KEY="$2"; shift 2 ;;
     --api-issuer)   API_ISSUER="$2"; shift 2 ;;
     --api-key-id)   API_KEY_ID="$2"; shift 2 ;;
@@ -59,6 +63,12 @@ echo ""
 
 APP_PATH="OpenTaiko.iOS/bin/Release/net8.0-ios/ios-arm64/OpenTaiko.iOS.app"
 
+# Auto-detect signing identity if not provided
+if [[ -z "$IDENTITY" ]]; then
+  IDENTITY=$(find_codesign_identity "Apple Distribution")
+  echo "    Identity: $IDENTITY"
+fi
+
 # --- Build ---
 if $BUILD; then
   # Ensure liblua54 xcframework exists
@@ -77,7 +87,7 @@ if $BUILD; then
     -c Release \
     -r ios-arm64 \
     -p:RuntimeIdentifier=ios-arm64 \
-    -p:CodesignKey="Apple Distribution" \
+    -p:CodesignKey="$IDENTITY" \
     -p:CodesignProvision="" \
     "${BUNDLE_ID_ARG[@]}" \
     2>&1 \
@@ -91,7 +101,7 @@ if $BUILD; then
       -c Release \
       -r ios-arm64 \
       -p:RuntimeIdentifier=ios-arm64 \
-      -p:CodesignKey="Apple Distribution" \
+      -p:CodesignKey="$IDENTITY" \
       -p:CodesignProvision="" \
       "${BUNDLE_ID_ARG[@]}" \
       2>&1 | tail -40

@@ -9,11 +9,14 @@
 #   --timeout N   Seconds to stream console output before exiting (default: 30, 0=unlimited)
 #   --release     Build in Release mode (AOT compiled, faster but slower build)
 #   --bundle-id ID  Override bundle identifier (default: from .csproj)
+#   --identity NAME Codesign identity (default: auto-detect "Apple Development")
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+source "OpenTaiko.iOS/scripts/_signing-helpers.sh"
 
 CSPROJ="OpenTaiko.iOS/OpenTaiko.iOS.csproj"
 BUNDLE_ID=""
+IDENTITY=""
 APP_PATH="OpenTaiko.iOS/bin/Debug/net8.0-ios/ios-arm64/OpenTaiko.iOS.app"
 DEVICE=""
 UDID=""
@@ -33,6 +36,7 @@ while [[ $# -gt 0 ]]; do
     --timeout)    TIMEOUT="$2"; shift 2 ;;
     --release)    CONFIG="Release"; shift ;;
     --bundle-id)  BUNDLE_ID="$2"; shift 2 ;;
+    --identity)   IDENTITY="$2"; shift 2 ;;
     *) echo "Unknown option: $1"; exit 1 ;;
   esac
 done
@@ -71,6 +75,12 @@ else
   fi
 fi
 
+# Auto-detect signing identity if not provided
+if [[ -z "$IDENTITY" ]]; then
+  IDENTITY=$(find_codesign_identity "Apple Development")
+  echo "==> Using identity: $IDENTITY"
+fi
+
 # Build for physical device
 if $BUILD; then
   # Download BASS iOS libraries if not present
@@ -88,7 +98,7 @@ if $BUILD; then
     -c "$CONFIG" \
     -r ios-arm64 \
     -p:RuntimeIdentifier=ios-arm64 \
-    -p:CodesignKey="Apple Development" \
+    -p:CodesignKey="$IDENTITY" \
     -p:CodesignProvision="" \
     "${BUNDLE_ID_ARG[@]}" \
     2>&1 \
@@ -103,7 +113,7 @@ if $BUILD; then
       -c "$CONFIG" \
       -r ios-arm64 \
       -p:RuntimeIdentifier=ios-arm64 \
-      -p:CodesignKey="Apple Development" \
+      -p:CodesignKey="$IDENTITY" \
       -p:CodesignProvision="" \
       "${BUNDLE_ID_ARG[@]}" \
       2>&1 | tail -30
