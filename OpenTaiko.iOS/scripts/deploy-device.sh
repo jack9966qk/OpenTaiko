@@ -45,6 +45,11 @@ fi
 
 # Build for physical device
 if $BUILD; then
+  # Download BASS iOS libraries if not present
+  if [[ ! -d "OpenTaiko.iOS/Libs/bass24-ios" ]]; then
+    bash OpenTaiko.iOS/scripts/download-bass.sh
+  fi
+
   # Build liblua54 xcframework if not present
   if [[ ! -d "OpenTaiko.iOS/Frameworks/liblua54.xcframework" ]]; then
     bash OpenTaiko.iOS/scripts/build-lua54.sh
