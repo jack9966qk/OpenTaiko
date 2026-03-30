@@ -8,10 +8,12 @@
 #   --wait N      Seconds to wait before screenshot (default: 20)
 #   --timeout N   Seconds to stream console output before exiting (default: 10, 0=unlimited)
 #   --release     Build in Release mode (AOT compiled, faster but slower build)
+#   --bundle-id ID  Override bundle identifier (default: from .csproj)
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-APP_ID="com.opentaiko.OpenTaiko"
+CSPROJ="OpenTaiko.iOS/OpenTaiko.iOS.csproj"
+BUNDLE_ID=""
 DEVICE="booted"
 CLEAN=false
 BUILD=true
@@ -29,11 +31,20 @@ while [[ $# -gt 0 ]]; do
     --wait)       WAIT="$2"; shift 2 ;;
     --timeout)    TIMEOUT="$2"; shift 2 ;;
     --release)    CONFIG="Release"; shift ;;
+    --bundle-id)  BUNDLE_ID="$2"; shift 2 ;;
     *) echo "Unknown option: $1"; exit 1 ;;
   esac
 done
 
 APP_PATH="OpenTaiko.iOS/bin/${CONFIG}/net8.0-ios/iossimulator-arm64/OpenTaiko.iOS.app"
+
+# Resolve bundle ID from .csproj if not overridden
+DEFAULT_BUNDLE_ID=$(grep '<ApplicationId' "$CSPROJ" | sed 's/.*>\(.*\)<.*/\1/')
+APP_ID="${BUNDLE_ID:-$DEFAULT_BUNDLE_ID}"
+BUNDLE_ID_ARG=()
+if [[ -n "$BUNDLE_ID" ]]; then
+  BUNDLE_ID_ARG=(-p:ApplicationId="$BUNDLE_ID")
+fi
 
 # Ensure a simulator is booted
 if ! xcrun simctl list devices booted | grep -q "Booted"; then
@@ -58,7 +69,7 @@ if $BUILD; then
   fi
 
   echo "==> Building ($CONFIG)..."
-  dotnet build OpenTaiko.iOS/OpenTaiko.iOS.csproj -c "$CONFIG" -r iossimulator-arm64 2>&1 \
+  dotnet build "$CSPROJ" -c "$CONFIG" -r iossimulator-arm64 "${BUNDLE_ID_ARG[@]}" 2>&1 \
     | grep -E "(error CS|Error\(s\)|Build succeeded)" \
     | tail -5
 fi
