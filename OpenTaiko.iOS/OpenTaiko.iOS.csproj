@@ -10,7 +10,7 @@
     <RuntimeIdentifier>iossimulator-arm64</RuntimeIdentifier>
 
     <!-- Application metadata -->
-    <ApplicationId>com.opentaiko.OpenTaiko</ApplicationId>
+    <ApplicationId Condition="'$(ApplicationId)' == ''">com.opentaiko.OpenTaiko</ApplicationId>
     <XSAppIconAssets>Assets.xcassets/AppIcon.appiconset</XSAppIconAssets>
     <ApplicationDisplayVersion>0.6.0</ApplicationDisplayVersion>
     <ApplicationVersion>1</ApplicationVersion>

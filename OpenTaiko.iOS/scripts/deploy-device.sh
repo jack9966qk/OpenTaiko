@@ -8,10 +8,12 @@
 #   --imobile     Use ideviceinstaller instead of devicectl (for jailbroken/older devices)
 #   --timeout N   Seconds to stream console output before exiting (default: 30, 0=unlimited)
 #   --release     Build in Release mode (AOT compiled, faster but slower build)
+#   --bundle-id ID  Override bundle identifier (default: from .csproj)
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-APP_ID="com.opentaiko.OpenTaiko"
+CSPROJ="OpenTaiko.iOS/OpenTaiko.iOS.csproj"
+BUNDLE_ID=""
 APP_PATH="OpenTaiko.iOS/bin/Debug/net8.0-ios/ios-arm64/OpenTaiko.iOS.app"
 DEVICE=""
 UDID=""
@@ -30,11 +32,20 @@ while [[ $# -gt 0 ]]; do
     --imobile)    IMOBILE=true; shift ;;
     --timeout)    TIMEOUT="$2"; shift 2 ;;
     --release)    CONFIG="Release"; shift ;;
+    --bundle-id)  BUNDLE_ID="$2"; shift 2 ;;
     *) echo "Unknown option: $1"; exit 1 ;;
   esac
 done
 
 APP_PATH="OpenTaiko.iOS/bin/${CONFIG}/net8.0-ios/ios-arm64/OpenTaiko.iOS.app"
+
+# Resolve bundle ID from .csproj if not overridden
+DEFAULT_BUNDLE_ID=$(grep '<ApplicationId' "$CSPROJ" | sed 's/.*>\(.*\)<.*/\1/')
+APP_ID="${BUNDLE_ID:-$DEFAULT_BUNDLE_ID}"
+BUNDLE_ID_ARG=()
+if [[ -n "$BUNDLE_ID" ]]; then
+  BUNDLE_ID_ARG=(-p:ApplicationId="$BUNDLE_ID")
+fi
 
 # Auto-detect device if not specified
 if $IMOBILE; then
@@ -73,12 +84,13 @@ if $BUILD; then
   fi
 
   echo "==> Building for ios-arm64 ($CONFIG)..."
-  dotnet build OpenTaiko.iOS/OpenTaiko.iOS.csproj \
+  dotnet build "$CSPROJ" \
     -c "$CONFIG" \
     -r ios-arm64 \
     -p:RuntimeIdentifier=ios-arm64 \
     -p:CodesignKey="Apple Development" \
     -p:CodesignProvision="" \
+    "${BUNDLE_ID_ARG[@]}" \
     2>&1 \
     | grep -E "(error CS|error MT|Error\(s\)|Build succeeded|NETSDK|Codesign)" \
     | tail -10
@@ -87,12 +99,13 @@ if $BUILD; then
   if [[ ! -d "$APP_PATH" ]]; then
     echo "Build failed — $APP_PATH not found."
     echo "Re-running build with full output..."
-    dotnet build OpenTaiko.iOS/OpenTaiko.iOS.csproj \
+    dotnet build "$CSPROJ" \
       -c "$CONFIG" \
       -r ios-arm64 \
       -p:RuntimeIdentifier=ios-arm64 \
       -p:CodesignKey="Apple Development" \
       -p:CodesignProvision="" \
+      "${BUNDLE_ID_ARG[@]}" \
       2>&1 | tail -30
     exit 1
   fi
