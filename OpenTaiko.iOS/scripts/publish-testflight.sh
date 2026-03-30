@@ -67,6 +67,11 @@ if $BUILD; then
     bash OpenTaiko.iOS/scripts/build-lua54.sh
   fi
 
+  BUNDLE_ID_ARG=()
+  if [[ -n "$BUNDLE_ID" && "$BUNDLE_ID" != "$DEFAULT_BUNDLE_ID" ]]; then
+    BUNDLE_ID_ARG=(-p:ApplicationId="$BUNDLE_ID")
+  fi
+
   echo "==> Building Release for ios-arm64 (distribution signing)..."
   dotnet build "$CSPROJ" \
     -c Release \
@@ -74,6 +79,7 @@ if $BUILD; then
     -p:RuntimeIdentifier=ios-arm64 \
     -p:CodesignKey="Apple Distribution" \
     -p:CodesignProvision="" \
+    "${BUNDLE_ID_ARG[@]}" \
     2>&1 \
     | grep -E "(error CS|error MT|Error\(s\)|Build succeeded|NETSDK|Codesign)" \
     | tail -10
@@ -87,6 +93,7 @@ if $BUILD; then
       -p:RuntimeIdentifier=ios-arm64 \
       -p:CodesignKey="Apple Distribution" \
       -p:CodesignProvision="" \
+      "${BUNDLE_ID_ARG[@]}" \
       2>&1 | tail -40
     exit 1
   fi
