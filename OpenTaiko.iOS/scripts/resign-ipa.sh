@@ -128,7 +128,7 @@ fi
 echo "==> Signing app with identity: $IDENTITY"
 codesign --force --sign "$IDENTITY" \
   --entitlements "$ENTITLEMENTS" \
-  --timestamp=none \
+  --generate-entitlement-der \
   "$APP_BUNDLE"
 
 # Verify signature
