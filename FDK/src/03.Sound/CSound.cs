@@ -99,6 +99,7 @@ public class CSound : IDisposable {
 	public bool b演奏終了後も再生が続くチップである = false; // これがtrueなら、本サウンドの再生終了のコールバック時に自動でミキサーから削除する
 
 	private SyncProcedure _cbEndofStream;
+	private GCHandle _endOfStreamGCHandle;
 
 	/// <summary>
 	/// Gain is applied "first" to the audio data, much as in a physical or
@@ -284,7 +285,8 @@ public class CSound : IDisposable {
 
 	public void CreateBassSound(string fileName, int hMixer) {
 		this.CurrentSoundDeviceType = ESoundDeviceType.Bass;        // 作成後に設定する。（作成に失敗してると例外発出されてここは実行されない）
-		this.CreateBassSound(fileName, hMixer, BassFlags.Decode);
+		// hMixer==0: iOS direct playback mode — no Decode flag needed
+		this.CreateBassSound(fileName, hMixer, hMixer == 0 ? BassFlags.Default : BassFlags.Decode);
 	}
 	public void CreateASIOSound(string fileName, int hMixer) {
 		this.CurrentSoundDeviceType = ESoundDeviceType.ASIO;        // 作成後に設定する。（作成に失敗してると例外発出されてここは実行されない）
@@ -334,6 +336,9 @@ public class CSound : IDisposable {
 	public bool IsPaused {
 		get {
 			if (this.IsBassSound) {
+				if (this.hMixer == 0) {
+					return Bass.ChannelIsActive(this.hBassStream) == PlaybackState.Paused;
+				}
 				bool ret = (!BassMixExtensions.ChannelIsPlaying(this.hBassStream)) &
 						   (BassMix.ChannelGetPosition(this.hBassStream) > 0);
 				return ret;
@@ -344,8 +349,9 @@ public class CSound : IDisposable {
 	}
 	public bool IsPlaying {
 		get {
-			// 基本的にはBASS_ACTIVE_PLAYINGなら再生中だが、最後まで再生しきったchannelも
-			// BASS_ACTIVE_PLAYINGのままになっているので、小細工が必要。
+			if (this.hMixer == 0) {
+				return Bass.ChannelIsActive(this.hBassStream) == PlaybackState.Playing;
+			}
 			bool ret = (BassMixExtensions.ChannelIsPlaying(this.hBassStream));
 			if (BassMix.ChannelGetPosition(this.hBassStream) >= nBytes) {
 				ret = false;
@@ -380,29 +386,23 @@ public class CSound : IDisposable {
 		tPlaySound(false);
 	}
 	private void tPlaySound(bool bループする) {
-		if (this.IsBassSound)           // BASSサウンド時のループ処理は、t再生を開始する()側に実装。ここでは「bループする」は未使用。
-		{
-			//Debug.WriteLine( "再生中?: " +  System.IO.Path.GetFileName(this.strファイル名) + " status=" + BassMix.BASS_Mixer_ChannelIsActive( this.hBassStream ) + " current=" + BassMix.BASS_Mixer_ChannelGetPosition( this.hBassStream ) + " nBytes=" + nBytes );
-			bool b = BassMixExtensions.ChannelPlay(this.hBassStream);
-			if (!b) {
-				//Debug.WriteLine( "再生しようとしたが、Mixerに登録されていなかった: " + Path.GetFileName( this.strファイル名 ) + ", stream#=" + this.hBassStream + ", ErrCode=" + Bass.BASS_ErrorGetCode() );
-
-				bool bb = AddBassSoundFromMixer();
-				if (!bb) {
-					Debug.WriteLine("Mixerへの登録に失敗: " + Path.GetFileName(this.FileName) + ", ErrCode=" + Bass.LastError);
-				} else {
-					//Debug.WriteLine( "Mixerへの登録に成功: " + Path.GetFileName( this.strファイル名 ) + ": " + Bass.BASS_ErrorGetCode() );
-				}
-				//this.t再生位置を先頭に戻す();
-
-				bool bbb = BassMixExtensions.ChannelPlay(this.hBassStream);
-				if (!bbb) {
-					Debug.WriteLine("更に再生に失敗: " + Path.GetFileName(this.FileName) + ", ErrCode=" + Bass.LastError);
-				} else {
-					//						Debug.WriteLine("再生成功(ミキサー追加後)                       : " + Path.GetFileName(this.strファイル名));
-				}
+		if (this.IsBassSound) {
+			if (this.hMixer == 0) {
+				// iOS direct playback
+				Bass.ChannelPlay(this.hBassStream, false);
 			} else {
-				//Debug.WriteLine( "再生成功: " + Path.GetFileName( this.strファイル名 ) + " (" + hBassStream + ")" );
+				// Desktop mixer playback
+				bool b = BassMixExtensions.ChannelPlay(this.hBassStream);
+				if (!b) {
+					bool bb = AddBassSoundFromMixer();
+					if (!bb) {
+						Debug.WriteLine("Mixerへの登録に失敗: " + Path.GetFileName(this.FileName) + ", ErrCode=" + Bass.LastError);
+					}
+					bool bbb = BassMixExtensions.ChannelPlay(this.hBassStream);
+					if (!bbb) {
+						Debug.WriteLine("更に再生に失敗: " + Path.GetFileName(this.FileName) + ", ErrCode=" + Bass.LastError);
+					}
+				}
 			}
 		}
 	}
@@ -417,10 +417,10 @@ public class CSound : IDisposable {
 	}
 	public void tStopSound(bool pause) {
 		if (this.IsBassSound) {
-			//Debug.WriteLine( "停止: " + System.IO.Path.GetFileName( this.strファイル名 ) + " status=" + BassMix.BASS_Mixer_ChannelIsActive( this.hBassStream ) + " current=" + BassMix.BASS_Mixer_ChannelGetPosition( this.hBassStream ) + " nBytes=" + nBytes );
-			BassMixExtensions.ChannelPause(this.hBassStream);
-			if (!pause) {
-				//		tBASSサウンドをミキサーから削除する();		// PAUSEと再生停止を区別できるようにすること!!
+			if (this.hMixer == 0) {
+				Bass.ChannelPause(this.hBassStream);
+			} else {
+				BassMixExtensions.ChannelPause(this.hBassStream);
 			}
 		}
 		this.PauseCount = 0;
@@ -428,15 +428,20 @@ public class CSound : IDisposable {
 
 	public void tSetPositonToBegin() {
 		if (this.IsBassSound) {
-			BassMix.ChannelSetPosition(this.hBassStream, 0);
-			//pos = 0;
+			if (this.hMixer == 0)
+				Bass.ChannelSetPosition(this.hBassStream, 0);
+			else
+				BassMix.ChannelSetPosition(this.hBassStream, 0);
 		}
 	}
 	public void tSetPositonToBegin(long positionMs) {
 		if (this.IsBassSound) {
 			bool b = true;
 			try {
-				b = BassMix.ChannelSetPosition(this.hBassStream, Bass.ChannelSeconds2Bytes(this.hBassStream, positionMs * this.Frequency * this.PlaySpeed / 1000.0), PositionFlags.Bytes);
+				long bytes = Bass.ChannelSeconds2Bytes(this.hBassStream, positionMs * this.Frequency * this.PlaySpeed / 1000.0);
+				b = this.hMixer == 0
+					? Bass.ChannelSetPosition(this.hBassStream, bytes, PositionFlags.Bytes)
+					: BassMix.ChannelSetPosition(this.hBassStream, bytes, PositionFlags.Bytes);
 			} catch (Exception e) {
 				Trace.TraceError(e.ToString());
 				Trace.TraceInformation(Path.GetFileName(this.FileName) + ": Seek error: " + e.ToString() + ": " + positionMs + "ms");
@@ -459,7 +464,9 @@ public class CSound : IDisposable {
 	/// <param name="positionMs"></param>
 	public void tGetPlayPositon(out long positionByte, out double positionMs) {
 		if (this.IsBassSound) {
-			positionByte = BassMix.ChannelGetPosition(this.hBassStream);
+			positionByte = this.hMixer == 0
+				? Bass.ChannelGetPosition(this.hBassStream)
+				: BassMix.ChannelGetPosition(this.hBassStream);
 			positionMs = Bass.ChannelBytes2Seconds(this.hBassStream, positionByte);
 		} else {
 			positionByte = 0;
@@ -510,14 +517,18 @@ public class CSound : IDisposable {
 			#region [ ASIO, WASAPI の解放 ]
 			//-----------------
 			if (_hTempoStream != 0) {
-				BassMix.MixerRemoveChannel(this._hTempoStream);
+				if (this.hMixer != 0) BassMix.MixerRemoveChannel(this._hTempoStream);
 				Bass.StreamFree(this._hTempoStream);
 			}
-			BassMix.MixerRemoveChannel(this._hBassStream);
+			if (this.hMixer != 0) BassMix.MixerRemoveChannel(this._hBassStream);
+			else Bass.ChannelStop(this._hBassStream);
 			Bass.StreamFree(this._hBassStream);
 			this.hBassStream = -1;
 			this._hBassStream = -1;
 			this._hTempoStream = 0;
+			if (_endOfStreamGCHandle.IsAllocated) {
+				_endOfStreamGCHandle.Free();
+			}
 			//-----------------
 			#endregion
 		}
@@ -636,29 +647,31 @@ public class CSound : IDisposable {
 	private void tBASSサウンドを作成する_ストリーム生成後の共通処理(int hMixer) {
 		SoundManager.nStreams++;
 
-		// 個々のストリームの出力をテンポ変更のストリームに入力する。テンポ変更ストリームの出力を、Mixerに出力する。
-
-		//			if ( CSound管理.bIsTimeStretch )	// TimeStretchのON/OFFに関わりなく、テンポ変更のストリームを生成する。後からON/OFF切り替え可能とするため。
-		{
+		if (hMixer != 0) {
+			// Desktop: TempoCreate for speed control (requires decode stream input)
 			this._hTempoStream = BassFx.TempoCreate(this._hBassStream, BassFlags.Decode | BassFlags.FxFreeSource);
 			if (this._hTempoStream == 0) {
 				hGC.Free();
 				throw new Exception(string.Format("サウンドストリームの生成に失敗しました。(BASS_FX_TempoCreate)[{0}]", Bass.LastError.ToString()));
 			} else {
-				Bass.ChannelSetAttribute(this._hTempoStream, ChannelAttribute.TempoUseQuickAlgorithm, 1f);  // 高速化(音の品質は少し落ちる)
+				Bass.ChannelSetAttribute(this._hTempoStream, ChannelAttribute.TempoUseQuickAlgorithm, 1f);
 			}
-		}
 
-		if (_hTempoStream != 0 && !this.IsNormalSpeed)  // 再生速度がx1.000のときは、TempoStreamを用いないようにして高速化する
-		{
-			this.hBassStream = _hTempoStream;
+			if (_hTempoStream != 0 && !this.IsNormalSpeed)
+			{
+				this.hBassStream = _hTempoStream;
+			} else {
+				this.hBassStream = _hBassStream;
+			}
+
+			// 再生終了時callback (mixer mode)
+			_endOfStreamGCHandle = GCHandle.Alloc(this);
+			_cbEndofStream = new SyncProcedure(CallbackEndofStreamStatic);
+			Bass.ChannelSetSync(hBassStream, SyncFlags.End | SyncFlags.Mixtime, 0, _cbEndofStream, GCHandle.ToIntPtr(_endOfStreamGCHandle));
 		} else {
+			// iOS direct playback: no TempoCreate, no mixer sync
 			this.hBassStream = _hBassStream;
 		}
-
-		// #32248 再生終了時に発火するcallbackを登録する (演奏終了後に再生終了するチップを非同期的にミキサーから削除するため。)
-		_cbEndofStream = new SyncProcedure(CallbackEndofStream);
-		Bass.ChannelSetSync(hBassStream, SyncFlags.End | SyncFlags.Mixtime, 0, _cbEndofStream, IntPtr.Zero);
 
 		// n総演奏時間の取得; DTXMania用に追加。
 		double seconds = Bass.ChannelBytes2Seconds(this._hBassStream, nBytes);
@@ -699,12 +712,13 @@ public class CSound : IDisposable {
 	/// <param name="channel"></param>
 	/// <param name="data"></param>
 	/// <param name="user"></param>
-	private void CallbackEndofStream(int handle, int channel, int data, IntPtr user)    // #32248 2013.10.14 yyagi
+	[ObjCRuntime.MonoPInvokeCallback(typeof(SyncProcedure))]
+	private static void CallbackEndofStreamStatic(int handle, int channel, int data, IntPtr user)    // #32248 2013.10.14 yyagi
 	{
-		// Trace.TraceInformation( "Callback!(remove): " + Path.GetFileName( this.strファイル名 ) );
-		if (b演奏終了後も再生が続くチップである)         // 演奏終了後に再生終了するチップ音のミキサー削除は、再生終了のコールバックに引っ掛けて、自前で行う。
+		var self = (CSound)GCHandle.FromIntPtr(user).Target;
+		if (self.b演奏終了後も再生が続くチップである)         // 演奏終了後に再生終了するチップ音のミキサー削除は、再生終了のコールバックに引っ掛けて、自前で行う。
 		{                                                   // そうでないものは、ミキサー削除予定時刻に削除する。
-			RemoveBassSoundFromMixer(channel);
+			self.RemoveBassSoundFromMixer(channel);
 		}
 	}
 
@@ -714,10 +728,10 @@ public class CSound : IDisposable {
 		return RemoveBassSoundFromMixer(this.hBassStream);
 	}
 	public bool RemoveBassSoundFromMixer(int channel) {
+		if (this.hMixer == 0) return true; // iOS direct mode
 		bool b = BassMix.MixerRemoveChannel(channel);
 		if (b) {
 			Interlocked.Decrement(ref SoundManager.nMixing);
-			//				Debug.WriteLine( "Removed: " + Path.GetFileName( this.strファイル名 ) + " (" + channel + ")" + " MixedStreams=" + CSound管理.nMixing );
 		}
 		return b;
 	}
@@ -726,19 +740,15 @@ public class CSound : IDisposable {
 	// mixer への追加
 
 	public bool AddBassSoundFromMixer() {
+		if (this.hMixer == 0) return true; // iOS direct mode
 		if (BassMix.ChannelGetMixer(hBassStream) == 0) {
 			BassFlags bf = BassFlags.SpeakerFront | BassFlags.MixerChanNoRampin | BassFlags.MixerChanPause;
 			Interlocked.Increment(ref SoundManager.nMixing);
 
-			// preloadされることを期待して、敢えてflagからはBASS_MIXER_PAUSEを外してAddChannelした上で、すぐにPAUSEする
-			// -> ChannelUpdateでprebufferできることが分かったため、BASS_MIXER_PAUSEを使用することにした
-
 			bool b1 = BassMix.MixerAddChannel(this.hMixer, this.hBassStream, bf);
-			//bool b2 = BassMix.BASS_Mixer_ChannelPause( this.hBassStream );
-			tSetPositonToBegin();   // StreamAddChannelの後で再生位置を戻さないとダメ。逆だと再生位置が変わらない。
-									//Trace.TraceInformation( "Add Mixer: " + Path.GetFileName( this.strファイル名 ) + " (" + hBassStream + ")" + " MixedStreams=" + CSound管理.nMixing );
+			tSetPositonToBegin();
 			Bass.ChannelUpdate(this.hBassStream, 0);    // pre-buffer
-			return b1;  // &b2;
+			return b1;
 		}
 		return true;
 	}

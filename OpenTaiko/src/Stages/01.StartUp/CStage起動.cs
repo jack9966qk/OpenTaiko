@@ -156,7 +156,7 @@ internal class CStage起動 : CStage {
 							this.ePhaseID = EPhase.Startup_Complete;
 							OpenTaiko.Skin.bgm起動画面.tStop();
 						}
-						if (OpenTaiko.ConfigIni.ASyncTextureLoad) {
+						if (OpenTaiko.ConfigIni.ASyncTextureLoad && !OperatingSystem.IsIOS()) {
 							Task.Run(loadTexture);
 						} else {
 							loadTexture();
@@ -182,6 +182,12 @@ internal class CStage起動 : CStage {
 				#endregion
 			} else if (OpenTaiko.ConfigIsNew && !bLanguageSelected) // Prompt language selection if Config.ini is newly generated
 			{
+				// On iOS, auto-select English since there's no keyboard
+				if (OperatingSystem.IsIOS()) {
+					OpenTaiko.ConfigIni.sLang = CLangManager.intToLang(0);
+					CLangManager.langAttach(OpenTaiko.ConfigIni.sLang);
+					bLanguageSelected = true;
+				}
 				HBlackBackdrop.Draw();
 
 				int x = langSelectOffset[0];
@@ -199,11 +205,16 @@ internal class CStage起動 : CStage {
 					y += langList[i].szTextureSize.Height;
 				}
 
-				if (OpenTaiko.InputManager.Keyboard.KeyPressed((int)SlimDXKeys.Key.DownArrow) || OpenTaiko.InputManager.Keyboard.KeyPressed((int)SlimDXKeys.Key.RightArrow)) {
+				if (OpenTaiko.InputManager.Keyboard.KeyPressed((int)SlimDXKeys.Key.DownArrow) || OpenTaiko.InputManager.Keyboard.KeyPressed((int)SlimDXKeys.Key.RightArrow)
+					|| OpenTaiko.Pad.bPressed(EInstrumentPad.Drums, EPad.RightChange)) {
 					langSelectIndex = Math.Min(langSelectIndex + 1, CLangManager.Languages.Length - 1);
-				} else if (OpenTaiko.InputManager.Keyboard.KeyPressed((int)SlimDXKeys.Key.UpArrow) || OpenTaiko.InputManager.Keyboard.KeyPressed((int)SlimDXKeys.Key.LeftArrow)) {
+				} else if (OpenTaiko.InputManager.Keyboard.KeyPressed((int)SlimDXKeys.Key.UpArrow) || OpenTaiko.InputManager.Keyboard.KeyPressed((int)SlimDXKeys.Key.LeftArrow)
+					|| OpenTaiko.Pad.bPressed(EInstrumentPad.Drums, EPad.LeftChange)) {
 					langSelectIndex = Math.Max(langSelectIndex - 1, 0);
-				} else if (OpenTaiko.InputManager.Keyboard.KeyPressed((int)SlimDXKeys.Key.Return)) {
+				} else if (OpenTaiko.InputManager.Keyboard.KeyPressed((int)SlimDXKeys.Key.Return)
+					|| OpenTaiko.Pad.bPressed(EInstrumentPad.Drums, EPad.Decide)
+					|| OpenTaiko.Pad.bPressed(EInstrumentPad.Drums, EPad.LRed)
+					|| OpenTaiko.Pad.bPressed(EInstrumentPad.Drums, EPad.RRed)) {
 					OpenTaiko.Skin.soundDecideSFX.tPlay();
 					OpenTaiko.ConfigIni.sLang = CLangManager.intToLang(langSelectIndex);
 					CLangManager.langAttach(OpenTaiko.ConfigIni.sLang);
@@ -214,7 +225,15 @@ internal class CStage起動 : CStage {
 				{
 					OpenTaiko.Songs管理 = (es != null) ? es.Songs管理 : null;      // 最後に、曲リストを拾い上げる
 
-					if (OpenTaiko.InputManager.Keyboard.KeyPressed((int)SlimDXKeys.Key.Return)) {
+					// On iOS, auto-proceed since there's no keyboard
+					if (OperatingSystem.IsIOS()) {
+						return 1;
+					}
+
+					if (OpenTaiko.InputManager.Keyboard.KeyPressed((int)SlimDXKeys.Key.Return)
+						|| OpenTaiko.Pad.bPressed(EInstrumentPad.Drums, EPad.Decide)
+						|| OpenTaiko.Pad.bPressed(EInstrumentPad.Drums, EPad.LRed)
+						|| OpenTaiko.Pad.bPressed(EInstrumentPad.Drums, EPad.RRed)) {
 						OpenTaiko.Skin.soundDecideSFX.tPlay();
 						return 1;
 					}

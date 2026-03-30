@@ -5,8 +5,12 @@ internal class CSongUniqueID {
 	public CSongUniqueID(string path) {
 		filePath = path;
 
-		tGenerateUniqueID();
-		tSongUniqueID();
+		if (File.Exists(filePath)) {
+			tLoadFile();
+		} else {
+			tGenerateUniqueID();
+			tSaveFile();
+		}
 	}
 
 	public void tSongUniqueID() {
@@ -42,7 +46,11 @@ internal class CSongUniqueID {
 	#region [private]
 
 	private void tSaveFile() {
-		ConfigManager.SaveConfig(data, filePath);
+		try {
+			ConfigManager.SaveConfig(data, filePath);
+		} catch (IOException) {
+			// File may already exist with different casing on case-sensitive filesystems
+		}
 	}
 
 	private void tLoadFile() {

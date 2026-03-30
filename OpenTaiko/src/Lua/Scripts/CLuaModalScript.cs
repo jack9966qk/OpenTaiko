@@ -9,6 +9,7 @@ internal class CLuaModalScript : CLuaScript {
 	private LuaFunction lfDraw;
 
 	public CLuaModalScript(string dir, string? texturesDir = null, string? soundsDir = null, bool loadAssets = true) : base(dir, texturesDir, soundsDir, loadAssets) {
+		if (bCrashed) return;
 
 		lfRegisterModal = (LuaFunction)LuaScript["registerNewModal"];
 		lfAnimationFinished = (LuaFunction)LuaScript["isAnimationFinished"];
