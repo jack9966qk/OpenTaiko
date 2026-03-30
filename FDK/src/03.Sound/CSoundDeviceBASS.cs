@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Runtime.InteropServices;
 using ManagedBass;
 using ManagedBass.Mix;
 
@@ -71,82 +72,101 @@ public class CSoundDeviceBASS : ISoundDevice {
 
 		int freq = 44100;
 
+		if (OperatingSystem.IsIOS()) {
+			// On iOS, use BASS defaults — don't override UpdatePeriod/Threads/Buffer
+			// (CoreAudio handles audio pumping internally)
+			Bass.Configure(Configuration.DeviceBufferLength, 15);
+		} else {
+			Bass.Configure(Configuration.UpdatePeriod, updatePeriod);
+			Bass.Configure(Configuration.UpdateThreads, 1);
+			Bass.Configure(Configuration.PlaybackBufferLength, bufferSize);
+		}
+
 		if (!Bass.Init(-1, freq, DeviceInitFlags.Default))
 			throw new Exception(string.Format("BASS の初期化に失敗しました。(BASS_Init)[{0}]", Bass.LastError.ToString()));
 
-		if (!Bass.Configure(Configuration.UpdatePeriod, updatePeriod)) {
-			Trace.TraceWarning($"BASS_SetConfig({nameof(Configuration.UpdatePeriod)}) に失敗しました。[{Bass.LastError}]");
-		}
-		if (!Bass.Configure(Configuration.UpdateThreads, 1)) {
-			Trace.TraceWarning($"BASS_SetConfig({nameof(Configuration.UpdateThreads)}) に失敗しました。[{Bass.LastError}]");
-		}
-
-		Bass.Configure(Configuration.PlaybackBufferLength, bufferSize);
 		Bass.Configure(Configuration.LogarithmicVolumeCurve, true);
 
-		this.STREAMPROC = new StreamProcedure(StreamProc);
-		this.MainStreamHandle = Bass.CreateStream(freq, 2, BassFlags.Default, this.STREAMPROC, IntPtr.Zero);
+		if (OperatingSystem.IsIOS()) {
+			// iOS: No mixer. Sounds play directly via Bass.ChannelPlay.
+			// MixerHandle=0 signals CSound to use direct playback.
+			this.MixerHandle = 0;
+			this.Mixer_DeviceOut = -1;
+			this.MainStreamHandle = -1;
+			this.IsBASSSoundFree = false;
 
-		var flag = BassFlags.MixerNonStop | BassFlags.Decode;   // デコードのみ＝発声しない。
-		this.MixerHandle = BassMix.CreateMixerStream(freq, 2, flag);
+			this.SoundDeviceType = ESoundDeviceType.Bass;
 
-		if (this.MixerHandle == 0) {
-			Errors err = Bass.LastError;
-			Bass.Free();
-			this.IsBASSSoundFree = true;
-			throw new Exception(string.Format("BASSミキサ(mixing)の作成に失敗しました。[{0}]", err));
-		}
+			if (!Bass.Start()) {
+				Errors err = Bass.LastError;
+				Bass.Free();
+				this.IsBASSSoundFree = true;
+				throw new Exception("BASS デバイス出力開始に失敗しました。" + err.ToString());
+			}
 
-		// BASS ミキサーの1秒あたりのバイト数を算出。
+			// Use AVAudioSession-measured latency if available, otherwise BASS info + small margin
+			Bass.GetInfo(out var info);
+			int latencyMs = iOSHardwareLatencyMs > 0 ? iOSHardwareLatencyMs : info.Latency + 20;
+			this.BufferSize = this.OutputDelay = latencyMs;
 
-		this.IsBASSSoundFree = false;
+			// Set UpdateSystemTimeMs so CSoundTimer reaches the bUseOSTimer branch
+			this.UpdateSystemTimeMs = this.SystemTimer.SystemTimeMs;
 
-		var mixerInfo = Bass.ChannelGetInfo(this.MixerHandle);
-		int bytesPerSample = 2;
-		long mixer_BlockAlign = mixerInfo.Channels * bytesPerSample;
-		this.Mixer_BytesPerSec = mixer_BlockAlign * mixerInfo.Frequency;
+		} else {
+			// Desktop: custom StreamProc pipeline (MainStream → Mixer_DeviceOut → MixerHandle)
+			this._gcHandle = GCHandle.Alloc(this);
+			this.STREAMPROC = new StreamProcedure(StreamProcStatic);
+			this.MainStreamHandle = Bass.CreateStream(freq, 2, BassFlags.Default, this.STREAMPROC, GCHandle.ToIntPtr(this._gcHandle));
 
-		// 単純に、hMixerの音量をMasterVolumeとして制御しても、
-		// ChannelGetData()の内容には反映されない。
-		// そのため、もう一段mixerを噛ませて、一段先のmixerからChannelGetData()することで、
-		// hMixerの音量制御を反映させる。
-		Mixer_DeviceOut = BassMix.CreateMixerStream(
-			freq, 2, flag);
-		if (this.Mixer_DeviceOut == 0) {
-			Errors errcode = Bass.LastError;
-			Bass.Free();
-			this.IsBASSSoundFree = true;
-			throw new Exception(string.Format("BASSミキサ(最終段)の作成に失敗しました。[{0}]", errcode));
-		}
-		{
-			bool b1 = BassMix.MixerAddChannel(this.Mixer_DeviceOut, this.MixerHandle, BassFlags.Default);
-			if (!b1) {
+			var flag = BassFlags.MixerNonStop | BassFlags.Decode;
+			this.MixerHandle = BassMix.CreateMixerStream(freq, 2, flag);
+
+			if (this.MixerHandle == 0) {
+				Errors err = Bass.LastError;
+				Bass.Free();
+				this.IsBASSSoundFree = true;
+				throw new Exception(string.Format("BASSミキサ(mixing)の作成に失敗しました。[{0}]", err));
+			}
+
+			this.IsBASSSoundFree = false;
+
+			var mixerInfo = Bass.ChannelGetInfo(this.MixerHandle);
+			int bytesPerSample = 2;
+			long mixer_BlockAlign = mixerInfo.Channels * bytesPerSample;
+			this.Mixer_BytesPerSec = mixer_BlockAlign * mixerInfo.Frequency;
+
+			Mixer_DeviceOut = BassMix.CreateMixerStream(freq, 2, flag);
+			if (this.Mixer_DeviceOut == 0) {
 				Errors errcode = Bass.LastError;
 				Bass.Free();
 				this.IsBASSSoundFree = true;
-				throw new Exception(string.Format("BASSミキサ(最終段とmixing)の接続に失敗しました。[{0}]", errcode));
-			};
+				throw new Exception(string.Format("BASSミキサ(最終段)の作成に失敗しました。[{0}]", errcode));
+			}
+			{
+				bool b1 = BassMix.MixerAddChannel(this.Mixer_DeviceOut, this.MixerHandle, BassFlags.Default);
+				if (!b1) {
+					Errors errcode = Bass.LastError;
+					Bass.Free();
+					this.IsBASSSoundFree = true;
+					throw new Exception(string.Format("BASSミキサ(最終段とmixing)の接続に失敗しました。[{0}]", errcode));
+				};
+			}
+
+			this.SoundDeviceType = ESoundDeviceType.Bass;
+
+			if (!Bass.Start()) {
+				Errors err = Bass.LastError;
+				Bass.Free();
+				this.IsBASSSoundFree = true;
+				throw new Exception("BASS デバイス出力開始に失敗しました。" + err.ToString());
+			} else {
+				Bass.GetInfo(out var info);
+				this.BufferSize = this.OutputDelay = info.Latency + bufferSize;
+				Trace.TraceInformation("BASS デバイス出力開始:[{0}ms]", this.OutputDelay);
+			}
+
+			Bass.ChannelPlay(this.MainStreamHandle, false);
 		}
-
-		this.SoundDeviceType = ESoundDeviceType.Bass;
-
-		// 出力を開始。
-
-		if (!Bass.Start())     // 範囲外の値を指定した場合は自動的にデフォルト値に設定される。
-		{
-			Errors err = Bass.LastError;
-			Bass.Free();
-			this.IsBASSSoundFree = true;
-			throw new Exception("BASS デバイス出力開始に失敗しました。" + err.ToString());
-		} else {
-			Bass.GetInfo(out var info);
-
-			this.BufferSize = this.OutputDelay = info.Latency + bufferSize;//求め方があっているのだろうか…
-
-			Trace.TraceInformation("BASS デバイス出力開始:[{0}ms]", this.OutputDelay);
-		}
-
-		Bass.ChannelPlay(this.MainStreamHandle, false);
 
 	}
 
@@ -174,6 +194,9 @@ public class CSoundDeviceBASS : ISoundDevice {
 		if (MainStreamHandle != -1) {
 			Bass.StreamFree(this.MainStreamHandle);
 		}
+		if (Mixer_DeviceOut != -1) {
+			Bass.StreamFree(this.Mixer_DeviceOut);
+		}
 		if (MixerHandle != -1) {
 			Bass.StreamFree(this.MixerHandle);
 		}
@@ -186,6 +209,9 @@ public class CSoundDeviceBASS : ISoundDevice {
 			SystemTimer.Dispose();
 			this.SystemTimer = null;
 		}
+		if (_gcHandle.IsAllocated) {
+			_gcHandle.Free();
+		}
 	}
 	~CSoundDeviceBASS() {
 		this.Dispose(false);
@@ -193,10 +219,18 @@ public class CSoundDeviceBASS : ISoundDevice {
 	//-----------------
 	#endregion
 
-	public int StreamProc(int handle, IntPtr buffer, int length, IntPtr user) {
-		// BASSミキサからの出力データをそのまま ASIO buffer へ丸投げ。
+	[ObjCRuntime.MonoPInvokeCallback(typeof(StreamProcedure))]
+	static int StreamProcStatic(int handle, IntPtr buffer, int length, IntPtr user) {
+		try {
+			var self = (CSoundDeviceBASS)GCHandle.FromIntPtr(user).Target;
+			return self.StreamProcInstance(handle, buffer, length);
+		} catch {
+			return 0;
+		}
+	}
 
-		int num = Bass.ChannelGetData(this.Mixer_DeviceOut, buffer, length);      // num = 実際に転送した長さ
+	int StreamProcInstance(int handle, IntPtr buffer, int length) {
+		int num = Bass.ChannelGetData(this.Mixer_DeviceOut, buffer, length);
 
 		if (num == -1) num = 0;
 
@@ -219,7 +253,13 @@ public class CSoundDeviceBASS : ISoundDevice {
 	protected int MixerHandle = -1;
 	protected int Mixer_DeviceOut = -1;
 	protected StreamProcedure STREAMPROC = null;
+	private GCHandle _gcHandle;
 	private bool IsBASSSoundFree = true;
+
+	/// <summary>
+	/// Set by iOS host before BASS init with AVAudioSession.OutputLatency + IOBufferDuration (ms).
+	/// </summary>
+	public static int iOSHardwareLatencyMs = 0;
 
 	//WASAPIとASIOはLinuxでは使えないので、ここだけで良し
 }

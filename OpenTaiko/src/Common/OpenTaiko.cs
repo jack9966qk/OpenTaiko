@@ -103,6 +103,10 @@ internal class OpenTaiko : Game {
 		get;
 		private set;
 	}
+	/// <summary>
+	/// iOS: set external input devices (e.g. CInputTouch) before calling InitWithExternalContext().
+	/// </summary>
+	internal static List<IInputDevice> ExternalInputDevices { get; set; }
 	public static CPad Pad {
 		get;
 		private set;
@@ -406,7 +410,15 @@ internal class OpenTaiko : Game {
 	protected override void Configuration() {
 		#region [ strEXEのあるフォルダを決定する ]
 		//-----------------
-		strEXEのあるフォルダ = Environment.CurrentDirectory + Path.DirectorySeparatorChar;
+		if (OperatingSystem.IsIOS()) {
+			// iOS: use the Documents directory where assets are copied on first launch.
+			// The app bundle is read-only; SQLite databases need write access for journaling.
+			strEXEのあるフォルダ = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) + Path.DirectorySeparatorChar;
+			// Set CWD so relative paths (Favorite.json, etc.) resolve to writable Documents dir
+			Directory.SetCurrentDirectory(strEXEのあるフォルダ);
+		} else {
+			strEXEのあるフォルダ = Environment.CurrentDirectory + Path.DirectorySeparatorChar;
+		}
 		// END #23629 2010.11.13 from
 		//-----------------
 		#endregion
@@ -441,6 +453,7 @@ internal class OpenTaiko : Game {
 				GraphicsDeviceType_ = Silk.NET.GLFW.AnglePlatformType.Vulkan;
 				ConfigIni.nGraphicsDeviceType = 2;
 			}
+			// iOS: no ANGLE needed, native GLES context provided by the host
 		} else {
 			switch (ConfigIni.nGraphicsDeviceType) {
 				case 0:
@@ -458,10 +471,12 @@ internal class OpenTaiko : Game {
 			}
 		}
 
-
-		WindowPosition = new Silk.NET.Maths.Vector2D<int>(ConfigIni.nWindowBaseXPosition, ConfigIni.nWindowBaseYPosition);
-		WindowSize = new Silk.NET.Maths.Vector2D<int>(ConfigIni.nWindowWidth, ConfigIni.nWindowHeight);
-		FullScreen = ConfigIni.bFullScreen;
+		if (!OperatingSystem.IsIOS()) {
+			// iOS: window is managed by the host UIViewController, not by Silk.NET
+			WindowPosition = new Silk.NET.Maths.Vector2D<int>(ConfigIni.nWindowBaseXPosition, ConfigIni.nWindowBaseYPosition);
+			WindowSize = new Silk.NET.Maths.Vector2D<int>(ConfigIni.nWindowWidth, ConfigIni.nWindowHeight);
+			FullScreen = ConfigIni.bFullScreen;
+		}
 		VSync = ConfigIni.bEnableVSync;
 		Framerate = 0;
 
@@ -519,7 +534,10 @@ internal class OpenTaiko : Game {
 			// #xxxxx 2013.4.8 yyagi; sleepの挿入位置を、EndScnene～Present間から、BeginScene前に移動。描画遅延を小さくするため。
 
 			if (rCurrentStage != null) {
-				OpenTaiko.NamePlate?.lcNamePlate.Update();
+				if (OperatingSystem.IsIOS() && _iosStageDebugCounter++ % 300 == 0) {
+					Console.WriteLine($"[OpenTaiko] Stage: {rCurrentStage.eStageID}, Phase: {rCurrentStage.ePhaseID}");
+				}
+				OpenTaiko.NamePlate?.lcNamePlate?.Update();
 				this.nDrawLoopReturnValue = (rCurrentStage != null) ? rCurrentStage.Draw() : 0;
 
 				CScoreIni scoreIni = null;
@@ -1231,7 +1249,7 @@ internal class OpenTaiko : Game {
 					&& rCurrentStage.eStageID != CStage.EStage.StartUp
 					&& rCurrentStage.eStageID != CStage.EStage.CRASH
 					&& OpenTaiko.Tx.Network_Connection != null) {
-					if (Math.Abs(SoundManager.PlayTimer.SystemTimeMs - this.PreviousSystemTimeMs) > 10000) {
+					if (FDK.SoundManager.PlayTimer != null && this.PreviousSystemTimeMs != long.MinValue && Math.Abs(SoundManager.PlayTimer.SystemTimeMs - this.PreviousSystemTimeMs) > 10000) {
 						this.PreviousSystemTimeMs = SoundManager.PlayTimer.SystemTimeMs;
 						Task.Factory.StartNew(() => {
 							//IPv4 8.8.8.8にPingを送信する(timeout 5000ms)
@@ -1249,10 +1267,12 @@ internal class OpenTaiko : Game {
 				if (rCurrentStage != null
 					&& rCurrentStage.eStageID != CStage.EStage.StartUp
 					&& rCurrentStage.eStageID != CStage.EStage.CRASH
-					&& OpenTaiko.Tx.Overlay != null) {
+					&& OpenTaiko.Tx.Overlay != null
+					&& !OperatingSystem.IsIOS()) {
 					OpenTaiko.Tx.Overlay.t2D描画(0, 0);
 				}
 			}
+
 
 			if (OpenTaiko.ConfigIni.KeyAssign.KeyIsPressed(OpenTaiko.ConfigIni.KeyAssign.System.Capture)) {
 #if DEBUG
@@ -1491,6 +1511,7 @@ internal class OpenTaiko : Game {
 
 	public List<CActivity> listTopLevelActivities;
 	private int nDrawLoopReturnValue;
+	private int _iosStageDebugCounter;
 	private string strWindowTitle
 	// ayo komi isn't this useless code? - tfd500
 	{
@@ -1668,7 +1689,12 @@ internal class OpenTaiko : Game {
 		Trace.TraceInformation("Initializing DirectInput and MIDI input...");
 		Trace.Indent();
 		try {
-			InputManager = new CInputManager(Window_, OpenTaiko.ConfigIni.bBufferedInputs, true, OpenTaiko.ConfigIni.nControllerDeadzone / 100.0f);
+			if (OperatingSystem.IsIOS() && ExternalInputDevices != null) {
+				// iOS: use externally-provided input devices (touch) instead of Silk.NET
+				InputManager = new CInputManager(ExternalInputDevices);
+			} else {
+				InputManager = new CInputManager(Window_, OpenTaiko.ConfigIni.bBufferedInputs, true, OpenTaiko.ConfigIni.nControllerDeadzone / 100.0f);
+			}
 			foreach (IInputDevice device in InputManager.InputDevices) {
 				if ((device.CurrentType == InputDeviceType.Joystick) && !ConfigIni.dicJoystick.ContainsValue(device.GUID)) {
 					int key = 0;
@@ -1735,6 +1761,10 @@ internal class OpenTaiko : Game {
 
 		#region [ Sound Device initialization ]
 		//---------------------
+		if (OperatingSystem.IsIOS()) {
+			Trace.TraceInformation("iOS: Using no-op sound device (no BASS audio in prototype).");
+			SoundManager = new SoundManager();
+		} else {
 		Trace.TraceInformation("Initializing sound device...");
 		Trace.Indent();
 		try {
@@ -1802,6 +1832,7 @@ internal class OpenTaiko : Game {
 			// throw new NullReferenceException("No sound devices are enabled. Please check your audio settings.", e);
 		} finally {
 			Trace.Unindent();
+		}
 		}
 		//---------------------
 		#endregion

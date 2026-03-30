@@ -136,6 +136,7 @@ internal class CSongs管理 {
 					#region[ 新処理 ]
 
 					string filePath = str基点フォルダ + fileinfo.Name;
+				  try {
 
 					using SHA1 hashProvider = SHA1.Create();
 					var fs = File.OpenRead(filePath);
@@ -333,6 +334,9 @@ internal class CSongs管理 {
 							}
 						}
 					}
+				  } catch (Exception ex) {
+					Trace.TraceError($"Error processing chart file {filePath}: {ex}");
+				  }
 					#endregion
 				}
 			}
