@@ -8,9 +8,6 @@ jobs:
   deploy:
     name: Deploy to TestFlight
     runs-on: macos-latest
-    
-    # Binds this job to the protected environment for secret safety and manual approval
-    environment: TestFlight-Deploy 
 
     steps:
       - name: Checkout repository
