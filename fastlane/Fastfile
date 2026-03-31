@@ -16,14 +16,18 @@ platform :ios do
       provisioning_profile: ENV["PROVISIONING_PROFILE_PATH"]
     )
 
-    # 2. Upload the newly signed IPA to TestFlight
+    # 2. Check if the secret is raw text or base64
+    api_key_content = ENV["APP_STORE_CONNECT_API_KEY_KEY"]
+    is_base64 = !api_key_content.include?("-----BEGIN")
+
+    # 3. Upload the newly signed IPA to TestFlight
     upload_to_testflight(
       ipa: ipa_path,
       api_key: app_store_connect_api_key(
         key_id: ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"],
         issuer_id: ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"],
-        key_content: ENV["APP_STORE_CONNECT_API_KEY_KEY"],
-        is_key_content_base64: true
+        key_content: api_key_content,
+        is_key_content_base64: is_base64
       ),
       skip_waiting_for_build_processing: true
     )
