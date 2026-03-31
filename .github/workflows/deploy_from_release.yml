@@ -68,4 +68,4 @@ jobs:
           APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY }}
           SIGNING_IDENTITY: ${{ secrets.SIGNING_IDENTITY }} 
         run: |
-          fastlane resign_and_deploy ipa_path:"OpenTaiko_unsigned.ipa"
+          fastlane resign_and_deploy ipa_path:"$GITHUB_WORKSPACE/OpenTaiko_unsigned.ipa"
