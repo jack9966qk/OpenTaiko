@@ -1,0 +1,31 @@
+default_platform(:ios)
+
+platform :ios do
+  desc "Resigns an unsigned IPA and uploads it to TestFlight"
+  lane :resign_and_deploy do |options|
+    ipa_path = options[:ipa_path]
+    
+    unless ipa_path && File.exist?(ipa_path)
+      UI.user_error!("Could not find IPA at path: #{ipa_path}")
+    end
+
+    # 1. Resign the IPA
+    resign(
+      ipa: ipa_path,
+      signing_identity: ENV["SIGNING_IDENTITY"],
+      provisioning_profile: ENV["PROVISIONING_PROFILE_PATH"]
+    )
+
+    # 2. Upload the newly signed IPA to TestFlight
+    upload_to_testflight(
+      ipa: ipa_path,
+      api_key: app_store_connect_api_key(
+        key_id: ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"],
+        issuer_id: ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"],
+        key_content: ENV["APP_STORE_CONNECT_API_KEY_KEY"],
+        is_key_content_base64: true
+      ),
+      skip_waiting_for_build_processing: true
+    )
+  end
+end
