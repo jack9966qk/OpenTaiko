@@ -74,6 +74,8 @@ cat > "$INFOPLIST" << 'PLIST'
   <string>liblua54</string>
   <key>CFBundleVersion</key>
   <string>5.4.6</string>
+  <key>CFBundleShortVersionString</key>
+  <string>5.4.6</string>
   <key>CFBundlePackageType</key>
   <string>FMWK</string>
   <key>MinimumOSVersion</key>
