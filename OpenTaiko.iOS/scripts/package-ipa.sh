@@ -8,8 +8,8 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 CSPROJ="OpenTaiko.iOS/OpenTaiko.iOS.csproj"
-OUTPUT="OpenTaiko.iOS/dist/OpenTaiko.ipa"
-BUNDLE_ID=""
+OUTPUT="OpenTaiko.iOS/dist/OpenTaiko_unsigned.ipa"
+BUNDLE_ID="com.opentaiko.mobile"
 BUILD=true
 
 while [[ $# -gt 0 ]]; do
