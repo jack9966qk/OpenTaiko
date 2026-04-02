@@ -720,7 +720,7 @@ internal class CSkin : IDisposable {
 		tReadSkinConfig();
 
 		//hsHitSoundsInformations = new CHitSounds(Path(@$"Sounds{System.IO.Path.DirectorySeparatorChar}HitSounds{System.IO.Path.DirectorySeparatorChar}HitSounds.json"));
-		hsHitSoundsInformations = new CHitSounds(@$"Global{System.IO.Path.DirectorySeparatorChar}HitSounds");
+		hsHitSoundsInformations = new CHitSounds(OpenTaiko.ResolveAssetPath(@$"Global{System.IO.Path.DirectorySeparatorChar}HitSounds"));
 	}
 
 	public void ReloadSkin() {
@@ -756,10 +756,11 @@ internal class CSkin : IDisposable {
 	/// </summary>
 	public void ReloadSkinPaths() {
 		#region [ Enumerate System ]
-		if (!Directory.Exists(strSystemSkinRoot))
+		string resolvedSkinRoot = OpenTaiko.ResolveAssetPath(strSystemSkinRoot);
+		if (!Directory.Exists(resolvedSkinRoot))
 			throw new DirectoryNotFoundException("OpenTaiko could not find the System folder, which contains the skin(s) needed to load the game.");
 
-		string[] tempSkinSubfolders = System.IO.Directory.GetDirectories(strSystemSkinRoot, "*");
+		string[] tempSkinSubfolders = OpenTaiko.GetMergedDirectories(strSystemSkinRoot, "*");
 
 		if (tempSkinSubfolders.Length == 0)
 			throw new DirectoryNotFoundException("OpenTaiko found the System folder, but could not find any skin(s) to load.");

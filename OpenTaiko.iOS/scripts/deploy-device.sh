@@ -63,7 +63,7 @@ if $IMOBILE; then
   fi
 else
   if [[ -z "$DEVICE" ]]; then
-    DEVICE=$(xcrun devicectl list devices 2>/dev/null | grep -E 'available.*paired' | awk '{for(i=1;i<=NF;i++) if($i ~ /^[A-F0-9]{8}-/) print $i}' | head -1)
+    DEVICE=$(xcrun devicectl list devices 2>/dev/null | { grep -E 'available.*paired' || true; } | awk '{for(i=1;i<=NF;i++) if($i ~ /^[A-F0-9]{8}-/) print $i}' | head -1)
     if [[ -z "$DEVICE" ]]; then
       echo "No device found via devicectl. Use --imobile for libimobiledevice."
       echo ""
@@ -102,7 +102,7 @@ if $BUILD; then
     -p:CodesignProvision="" \
     "${BUNDLE_ID_ARG[@]}" \
     2>&1 \
-    | grep -E "(error CS|error MT|Error\(s\)|Build succeeded|NETSDK|Codesign)" \
+    | { grep -E "(error CS|error MT|Error\(s\)|Build succeeded|NETSDK|Codesign)" || true; } \
     | tail -10
 
   # Check build actually succeeded

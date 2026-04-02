@@ -202,33 +202,33 @@ public class GameViewController : UIViewController {
 	}
 
 	/// <summary>
-	/// Copy game assets from the read-only app bundle to the writable Documents directory.
-	/// SQLite databases need write access for journaling, and the game writes Config.ini/Saves.db3.
-	/// Only copies if the target directory doesn't exist yet (first launch).
+	/// Copy writable/user-facing assets from the app bundle to the Documents directory.
+	/// Only copies if the target doesn't exist yet (first launch or new directory).
+	/// Read-only assets (Global/, Lang/, Encyclopedia/, BGScriptAPI.lua) stay in the bundle
+	/// and are resolved at runtime via OpenTaiko.ResolveAssetPath().
 	/// </summary>
 	private static void CopyBundleAssetsToDocuments() {
 		string bundlePath = NSBundle.MainBundle.BundlePath;
 		string docsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
 
-		// Directories to copy from the bundle
-		string[] assetDirs = { "Databases", "Global", "Lang", "System", "Songs", "Encyclopedia", ".init" };
-		string[] assetFiles = { "BGScriptAPI.lua" };
+		// Copy writable directories to Documents. System/ is read directly from
+		// the bundle via ResolveAssetPath()/GetMergedDirectories().
+		// Songs/ is copied because the game writes uniqueID.json into song folders.
+		string[] copyDirs = { "Songs", "Databases", ".init" };
 
-		foreach (string dir in assetDirs) {
+		foreach (string dir in copyDirs) {
 			string src = Path.Combine(bundlePath, dir);
 			string dst = Path.Combine(docsPath, dir);
 			if (!Directory.Exists(src)) continue;
-			if (Directory.Exists(dst)) continue; // already copied
+			if (Directory.Exists(dst)) continue;
 			CopyDirectory(src, dst);
 		}
 
-		foreach (string file in assetFiles) {
-			string src = Path.Combine(bundlePath, file);
-			string dst = Path.Combine(docsPath, file);
-			if (!File.Exists(src)) continue;
-			if (File.Exists(dst)) continue;
-			File.Copy(src, dst);
-		}
+		// Create empty System/ in Documents so users can add custom skins via file sharing.
+		// The bundled skin is resolved at runtime via GetMergedDirectories().
+		string systemDir = Path.Combine(docsPath, "System");
+		if (!Directory.Exists(systemDir))
+			Directory.CreateDirectory(systemDir);
 	}
 
 	private static void CopyDirectory(string src, string dst) {
@@ -286,8 +286,10 @@ public class GameViewController : UIViewController {
 		// Register BASS native library resolver before any ManagedBass calls
 		RegisterBassResolver();
 
-		// Copy game assets from bundle to writable Documents directory
+		// Copy writable/user-facing assets from bundle to Documents directory.
+		// Read-only assets (Global/, Lang/, etc.) are resolved from the bundle at runtime.
 		CopyBundleAssetsToDocuments();
+		global::OpenTaiko.OpenTaiko.strBundleフォルダ = NSBundle.MainBundle.BundlePath + Path.DirectorySeparatorChar;
 
 		// Create input devices
 		_touchInput = new CInputTouch();
