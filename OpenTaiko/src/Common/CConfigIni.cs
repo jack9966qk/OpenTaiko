@@ -1835,9 +1835,9 @@ internal class CConfigIni : INotifyPropertyChanged {
 		if (strSystemSkinSubfolderFullName != null && strSystemSkinSubfolderFullName.Length == 0) {
 			// Config.iniが空の状態でDTXManiaをViewerとして起動_終了すると、strSystemSkinSubfolderFullName が空の状態でここに来る。
 			// → 初期値として Default/ を設定する。
-			strSystemSkinSubfolderFullName = System.IO.Path.Combine(OpenTaiko.strEXEのあるフォルダ,
+			strSystemSkinSubfolderFullName = OpenTaiko.ResolveAssetPath(System.IO.Path.Combine(OpenTaiko.strEXEのあるフォルダ,
 				"System" + System.IO.Path.DirectorySeparatorChar + "Default" +
-				System.IO.Path.DirectorySeparatorChar);
+				System.IO.Path.DirectorySeparatorChar));
 		}
 
 		Uri uriPath = new Uri(System.IO.Path.Combine(this.strSystemSkinSubfolderFullName,
@@ -2757,7 +2757,7 @@ internal class CConfigIni : INotifyPropertyChanged {
 						absSkinPath += System.IO.Path.DirectorySeparatorChar;
 					}
 
-					this.strSystemSkinSubfolderFullName = absSkinPath;
+					this.strSystemSkinSubfolderFullName = OpenTaiko.ResolveAssetPath(absSkinPath);
 					break;
 				}
 			case nameof(this.PreAssetsLoading):

@@ -28,14 +28,6 @@ internal class CStageTitle : CStage {
 		try {
 			UnloadSaveFile();
 
-			// iOS: Auto-select save file and skip to mode selection
-			if (OperatingSystem.IsIOS()) {
-				OpenTaiko.SaveFile = 0;
-				bSaveFileLoaded = true;
-				for (int i = 0; i < 2; i++)
-					OpenTaiko.NamePlate.tNamePlateRefreshTitles(i);
-			}
-
 			this.PuchiChara.IdleAnimation();
 
 			SkipSaveFileStep();
@@ -122,10 +114,7 @@ internal class CStageTitle : CStage {
 			#region [ 初めての進行描画 ]
 			//---------------------
 			if (base.IsFirstDraw) {
-				if (OperatingSystem.IsIOS()) {
-					// iOS: skip fade-in, go straight to normal phase
-					base.ePhaseID = CStage.EPhase.Common_NORMAL;
-				} else if (OpenTaiko.rPreviousStage == OpenTaiko.stageStartup) {
+				if (OpenTaiko.rPreviousStage == OpenTaiko.stageStartup) {
 					this.actFIfromSetup.tフェードイン開始();
 					base.ePhaseID = CStage.EPhase.Title_FadeIn;
 				} else {
