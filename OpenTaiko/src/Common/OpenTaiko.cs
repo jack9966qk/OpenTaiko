@@ -246,6 +246,67 @@ internal class OpenTaiko : Game {
 		get;
 		private set;
 	}
+	/// <summary>
+	/// iOS only: read-only app bundle path. Null on other platforms.
+	/// Used as a fallback for assets not copied to Documents (Global/, Lang/, etc.).
+	/// </summary>
+	public static string strBundleフォルダ {
+		get;
+		set;
+	}
+	/// <summary>
+	/// Resolve a path for reading. On iOS, if the path doesn't exist under the
+	/// Documents directory, falls back to the equivalent path under the app bundle.
+	/// </summary>
+	public static string ResolveAssetPath(string path) {
+		if (strBundleフォルダ != null && !File.Exists(path) && !Directory.Exists(path)) {
+			string relative;
+			if (path.StartsWith(strEXEのあるフォルダ)) {
+				// Absolute path under Documents — try equivalent under bundle
+				relative = path.Substring(strEXEのあるフォルダ.Length);
+			} else if (!Path.IsPathRooted(path)) {
+				// Relative path (resolved against CWD=Documents) — try under bundle
+				relative = path;
+			} else {
+				return path;
+			}
+			string bundlePath = strBundleフォルダ + relative;
+			if (File.Exists(bundlePath) || Directory.Exists(bundlePath))
+				return bundlePath;
+		}
+		return path;
+	}
+	/// <summary>
+	/// On iOS, merge subdirectories from both Documents and bundle for a given path.
+	/// Documents entries take priority (user overrides). On other platforms, just
+	/// returns Directory.GetDirectories(path).
+	/// </summary>
+	public static string[] GetMergedDirectories(string path, string searchPattern = "*") {
+		if (strBundleフォルダ == null)
+			return Directory.Exists(path) ? Directory.GetDirectories(path, searchPattern) : Array.Empty<string>();
+
+		string relative;
+		if (path.StartsWith(strEXEのあるフォルダ))
+			relative = path.Substring(strEXEのあるフォルダ.Length);
+		else if (!Path.IsPathRooted(path))
+			relative = path;
+		else
+			return Directory.Exists(path) ? Directory.GetDirectories(path, searchPattern) : Array.Empty<string>();
+
+		string bundleDir = strBundleフォルダ + relative;
+
+		// Collect subdirectory names from both locations, Documents wins on overlap
+		var dirs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+		if (Directory.Exists(bundleDir)) {
+			foreach (string d in Directory.GetDirectories(bundleDir, searchPattern))
+				dirs[Path.GetFileName(d)] = d;
+		}
+		if (Directory.Exists(path)) {
+			foreach (string d in Directory.GetDirectories(path, searchPattern))
+				dirs[Path.GetFileName(d)] = d; // overrides bundle entry
+		}
+		return dirs.Values.ToArray();
+	}
 	public static CTimer Timer {
 		get;
 		private set;
@@ -417,9 +478,11 @@ internal class OpenTaiko : Game {
 		#region [ strEXEのあるフォルダを決定する ]
 		//-----------------
 		if (OperatingSystem.IsIOS()) {
-			// iOS: use the Documents directory where assets are copied on first launch.
-			// The app bundle is read-only; SQLite databases need write access for journaling.
+			// iOS: Documents is writable; bundle has all assets read-only.
+			// Writable files (Config.ini, databases, etc.) live in Documents.
+			// Read-only assets (Global/, Lang/, etc.) resolve to the bundle via ResolveAssetPath().
 			strEXEのあるフォルダ = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments) + Path.DirectorySeparatorChar;
+			// strBundleフォルダ is set by GameViewController before game launch
 			// Set CWD so relative paths (Favorite.json, etc.) resolve to writable Documents dir
 			Directory.SetCurrentDirectory(strEXEのあるフォルダ);
 		} else {

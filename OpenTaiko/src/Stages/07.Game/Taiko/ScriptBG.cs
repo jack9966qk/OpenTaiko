@@ -132,7 +132,7 @@ class ScriptBG : IDisposable {
 			LuaSecurity.Secure(LuaScript);
 
 			LuaScript["func"] = new ScriptBGFunc(Textures, Path.GetDirectoryName(filePath));
-			using (var streamAPI = new StreamReader("BGScriptAPI.lua", Encoding.UTF8)) {
+			using (var streamAPI = new StreamReader(OpenTaiko.ResolveAssetPath(Path.Combine(OpenTaiko.strEXEのあるフォルダ, "BGScriptAPI.lua")), Encoding.UTF8)) {
 				using (var stream = new StreamReader(filePath, Encoding.UTF8)) {
 					var text = $"{streamAPI.ReadToEnd()}\n{stream.ReadToEnd()}";
 					LuaScript.DoString(text);
