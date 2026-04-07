@@ -13,12 +13,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download unsigned IPA from Release
+      - name: Download unsigned IPA and dSYM from Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Grabs the specific IPA attached to the release that triggered this run
           gh release download ${{ github.event.release.tag_name }} --pattern "OpenTaiko_unsigned.ipa"
+          # dSYM is optional — older releases may not include it
+          gh release download ${{ github.event.release.tag_name }} --pattern "OpenTaiko.iOS.dSYM.zip" || echo "Warning: dSYM not found in release, skipping."
+          if [[ -f "OpenTaiko.iOS.dSYM.zip" ]]; then
+            unzip -q OpenTaiko.iOS.dSYM.zip
+            echo "DSYM_PATH=$GITHUB_WORKSPACE/OpenTaiko.iOS.app.dSYM" >> $GITHUB_ENV
+          fi
 
       - name: Install Apple Certificate and Provisioning Profile
         env:
@@ -68,4 +73,4 @@ jobs:
           APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY }}
           SIGNING_IDENTITY: ${{ secrets.SIGNING_IDENTITY }} 
         run: |
-          fastlane resign_and_deploy ipa_path:"$GITHUB_WORKSPACE/OpenTaiko_unsigned.ipa"
+          fastlane resign_and_deploy ipa_path:"$GITHUB_WORKSPACE/OpenTaiko_unsigned.ipa" dsym_path:"${DSYM_PATH:-}"

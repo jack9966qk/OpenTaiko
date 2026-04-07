@@ -4,7 +4,8 @@ platform :ios do
   desc "Resigns an unsigned IPA and uploads it to TestFlight"
   lane :resign_and_deploy do |options|
     ipa_path = options[:ipa_path]
-    
+    dsym_path = options[:dsym_path]
+
     unless ipa_path && File.exist?(ipa_path)
       UI.user_error!("Could not find IPA at path: #{ipa_path}")
     end
@@ -20,16 +21,32 @@ platform :ios do
     api_key_content = ENV["APP_STORE_CONNECT_API_KEY_KEY"]
     is_base64 = !api_key_content.include?("-----BEGIN")
 
+    api_key = app_store_connect_api_key(
+      key_id: ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"],
+      issuer_id: ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"],
+      key_content: api_key_content,
+      is_key_content_base64: is_base64
+    )
+
     # 3. Upload the newly signed IPA to TestFlight
     upload_to_testflight(
       ipa: ipa_path,
-      api_key: app_store_connect_api_key(
-        key_id: ENV["APP_STORE_CONNECT_API_KEY_KEY_ID"],
-        issuer_id: ENV["APP_STORE_CONNECT_API_KEY_ISSUER_ID"],
-        key_content: api_key_content,
-        is_key_content_base64: is_base64
-      ),
+      api_key: api_key,
       skip_waiting_for_build_processing: true
     )
+
+    # 4. Upload dSYM to App Store Connect for crash symbolication (if available).
+    if dsym_path && !dsym_path.empty? && File.exist?(dsym_path)
+      UI.message("Uploading dSYM from #{dsym_path}...")
+      # Zip the dSYM directory for upload
+      dsym_zip = dsym_path + ".zip"
+      Actions.sh("cd '#{File.dirname(dsym_path)}' && zip -qr '#{File.basename(dsym_zip)}' '#{File.basename(dsym_path)}'")
+      upload_symbols_to_app_store(
+        dsym_path: dsym_zip,
+        api_key: api_key
+      )
+    else
+      UI.important("No dSYM provided — crash reports will have unsymbolicated frames.")
+    end
   end
 end
