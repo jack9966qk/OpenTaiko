@@ -73,4 +73,14 @@ mv "$TMPDIR/OpenTaiko.iOS.app" "$TMPDIR/Payload/"
 (cd "$TMPDIR" && zip -qr ipa.zip Payload)
 mv "$TMPDIR/ipa.zip" "$OUTPUT"
 
+# Copy dSYM alongside the IPA for TestFlight symbolication
+DSYM_SRC="$APP_SRC.dSYM"
+DSYM_DST="$(dirname "$OUTPUT")/OpenTaiko.iOS.app.dSYM"
+if [[ -d "$DSYM_SRC" ]]; then
+  rm -rf "$DSYM_DST"
+  cp -R "$DSYM_SRC" "$DSYM_DST"
+  echo "==> dSYM: $DSYM_DST"
+  echo "   Upload this dSYM to App Store Connect for crash symbolication."
+fi
+
 echo "==> Done: $OUTPUT ($(du -h "$OUTPUT" | awk '{print $1}'))"
