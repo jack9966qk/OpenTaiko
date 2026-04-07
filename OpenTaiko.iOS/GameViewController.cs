@@ -267,6 +267,8 @@ public class GameViewController : UIViewController {
 	}
 
 	private void InitializeGame() {
+		CrashLog.FlushPreviousCrashLogs();
+
 		Thread.CurrentThread.CurrentCulture = CultureInfo.InvariantCulture;
 		Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
@@ -328,30 +330,36 @@ public class GameViewController : UIViewController {
 	private double _lastTimestamp;
 	private int _lastDrumVisual = -1;
 	private void OnFrame() {
-		// Rebuild touch overlay if drum size settings changed
-		int currentVisual = global::OpenTaiko.OpenTaiko.ConfigIni?.nTouchDrumVisual ?? 30;
-		if (currentVisual != _lastDrumVisual) {
-			_lastDrumVisual = currentVisual;
-			_touchOverlay?.RemoveFromSuperview();
-			CreateTouchOverlay();
-		}
+		try {
+			// Rebuild touch overlay if drum size settings changed
+			int currentVisual = global::OpenTaiko.OpenTaiko.ConfigIni?.nTouchDrumVisual ?? 30;
+			if (currentVisual != _lastDrumVisual) {
+				_lastDrumVisual = currentVisual;
+				_touchOverlay?.RemoveFromSuperview();
+				CreateTouchOverlay();
+			}
 
-		if (_game == null || _game.IsExiting) {
+			if (_game == null || _game.IsExiting) {
+				_displayLink?.Invalidate();
+				return;
+			}
+
+			double now = _displayLink!.Timestamp;
+			double delta = _lastTimestamp > 0 ? now - _lastTimestamp : 1.0 / 60.0;
+			_lastTimestamp = now;
+
+			EAGLContext.SetCurrentContext(_glContext);
+			GLES.BindFramebuffer(GLES.GL_FRAMEBUFFER, _framebuffer);
+
+			_game.iOSFrame(delta);
+
+			if (++_debugHudFrameCount % 60 == 0)
+				UpdateDebugHud();
+		} catch (Exception ex) {
+			CrashLog.Write(ex, "OnFrame");
 			_displayLink?.Invalidate();
-			return;
+			throw;
 		}
-
-		double now = _displayLink!.Timestamp;
-		double delta = _lastTimestamp > 0 ? now - _lastTimestamp : 1.0 / 60.0;
-		_lastTimestamp = now;
-
-		EAGLContext.SetCurrentContext(_glContext);
-		GLES.BindFramebuffer(GLES.GL_FRAMEBUFFER, _framebuffer);
-
-		_game.iOSFrame(delta);
-
-		if (++_debugHudFrameCount % 60 == 0)
-			UpdateDebugHud();
 	}
 
 	#region Touch Input
