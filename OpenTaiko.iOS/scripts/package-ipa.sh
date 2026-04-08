@@ -66,21 +66,26 @@ cp -R "$APP_SRC" "$TMPDIR/OpenTaiko.iOS.app"
 rm -rf "$TMPDIR/OpenTaiko.iOS.app/_CodeSignature"
 rm -f "$TMPDIR/OpenTaiko.iOS.app/embedded.mobileprovision"
 
-# Package as .ipa
+# Package as .ipa (Payload/ only). App Store Connect rejects IPAs that
+# contain a Symbols/ directory with standalone binaries, so the dSYM is
+# emitted as a separate .dSYM.zip next to the IPA.
 echo "==> Creating IPA..."
 mkdir -p "$TMPDIR/Payload"
 mv "$TMPDIR/OpenTaiko.iOS.app" "$TMPDIR/Payload/"
+
 (cd "$TMPDIR" && zip -qr ipa.zip Payload)
 mv "$TMPDIR/ipa.zip" "$OUTPUT"
 
-# Copy dSYM alongside the IPA for TestFlight symbolication
 DSYM_SRC="$APP_SRC.dSYM"
-DSYM_DST="$(dirname "$OUTPUT")/OpenTaiko.iOS.app.dSYM"
+DSYM_ZIP="${OUTPUT%.ipa}.dSYM.zip"
 if [[ -d "$DSYM_SRC" ]]; then
-  rm -rf "$DSYM_DST"
-  cp -R "$DSYM_SRC" "$DSYM_DST"
-  echo "==> dSYM: $DSYM_DST"
-  echo "   Upload this dSYM to App Store Connect for crash symbolication."
+  DSYM_NAME="$(basename "$DSYM_SRC")"
+  cp -R "$DSYM_SRC" "$TMPDIR/"
+  (cd "$TMPDIR" && zip -qr dSYM.zip "$DSYM_NAME")
+  mv "$TMPDIR/dSYM.zip" "$DSYM_ZIP"
+  echo "==> dSYM zip: $DSYM_ZIP ($(du -h "$DSYM_ZIP" | awk '{print $1}'))"
+else
+  echo "Warning: dSYM not found at $DSYM_SRC, skipping dSYM zip."
 fi
 
 echo "==> Done: $OUTPUT ($(du -h "$OUTPUT" | awk '{print $1}'))"
