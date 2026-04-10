@@ -13,17 +13,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download unsigned IPA and dSYM from Release
+      - name: Download unsigned IPA from Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release download ${{ github.event.release.tag_name }} --pattern "OpenTaiko_unsigned.ipa"
-          # dSYM is optional — older releases may not include it
-          gh release download ${{ github.event.release.tag_name }} --pattern "OpenTaiko.iOS.dSYM.zip" || echo "Warning: dSYM not found in release, skipping."
-          if [[ -f "OpenTaiko.iOS.dSYM.zip" ]]; then
-            unzip -q OpenTaiko.iOS.dSYM.zip
-            echo "DSYM_PATH=$GITHUB_WORKSPACE/OpenTaiko.iOS.app.dSYM" >> $GITHUB_ENV
-          fi
 
       - name: Install Apple Certificate and Provisioning Profile
         env:
@@ -61,16 +55,67 @@ jobs:
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.2'
-          bundler-cache: true 
+          bundler-cache: true
 
       - name: Install Fastlane
         run: gem install fastlane -NV
 
-      - name: Resign and Upload via Fastlane
+      - name: Resign IPA
+        env:
+          SIGNING_IDENTITY: ${{ secrets.SIGNING_IDENTITY }}
+        run: |
+          fastlane resign_ipa ipa_path:"$GITHUB_WORKSPACE/OpenTaiko_unsigned.ipa"
+
+      - name: Write App Store Connect API key
         env:
           APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY_ID }}
           APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
           APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY }}
-          SIGNING_IDENTITY: ${{ secrets.SIGNING_IDENTITY }} 
         run: |
-          fastlane resign_and_deploy ipa_path:"$GITHUB_WORKSPACE/OpenTaiko_unsigned.ipa" dsym_path:"${DSYM_PATH:-}"
+          # Decode the key if it's base64-encoded
+          KEY_CONTENT="$APP_STORE_CONNECT_API_KEY_KEY"
+          if ! echo "$KEY_CONTENT" | grep -q "BEGIN"; then
+            KEY_CONTENT=$(echo "$KEY_CONTENT" | base64 --decode)
+          fi
+
+          # Write the API key file for altool
+          mkdir -p "$RUNNER_TEMP/keys"
+          API_KEY_PATH="$RUNNER_TEMP/keys/AuthKey_${APP_STORE_CONNECT_API_KEY_KEY_ID}.p8"
+          echo "$KEY_CONTENT" > "$API_KEY_PATH"
+
+          echo "API_KEY_PATH=$API_KEY_PATH" >> $GITHUB_ENV
+          echo "API_KEY_DIR=$RUNNER_TEMP/keys" >> $GITHUB_ENV
+
+      - name: Upload to TestFlight via altool
+        id: altool_upload
+        continue-on-error: true
+        env:
+          APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          cp "$API_KEY_DIR"/*.p8 ~/.appstoreconnect/private_keys/
+          xcrun altool --upload-app \
+            -f "$GITHUB_WORKSPACE/OpenTaiko_unsigned.ipa" \
+            -t ios \
+            --apiKey "$APP_STORE_CONNECT_API_KEY_KEY_ID" \
+            --apiIssuer "$APP_STORE_CONNECT_API_KEY_ISSUER_ID"
+
+      - name: Distribute to TestFlight beta group
+        if: steps.altool_upload.outcome == 'success'
+        env:
+          APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY }}
+        run: |
+          fastlane distribute_to_testers
+
+      - name: Fallback — Upload via Fastlane
+        if: steps.altool_upload.outcome == 'failure'
+        env:
+          APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY }}
+        run: |
+          echo "altool failed, falling back to Fastlane upload_to_testflight..."
+          fastlane upload_ipa ipa_path:"$GITHUB_WORKSPACE/OpenTaiko_unsigned.ipa"
