@@ -183,7 +183,7 @@ internal class CStage起動 : CStage {
 			} else if (OpenTaiko.ConfigIsNew && !bLanguageSelected) // Prompt language selection if Config.ini is newly generated
 			{
 				// On iOS, auto-select English since there's no keyboard
-				if (OperatingSystem.IsIOS()) {
+				if (OperatingSystem.IsIOS() && OpenTaiko.iOSAutoAdvanceUI) {
 					OpenTaiko.ConfigIni.sLang = CLangManager.intToLang(0);
 					CLangManager.langAttach(OpenTaiko.ConfigIni.sLang);
 					bLanguageSelected = true;
@@ -226,7 +226,7 @@ internal class CStage起動 : CStage {
 					OpenTaiko.Songs管理 = (es != null) ? es.Songs管理 : null;      // 最後に、曲リストを拾い上げる
 
 					// On iOS, auto-proceed since there's no keyboard
-					if (OperatingSystem.IsIOS()) {
+					if (OperatingSystem.IsIOS() && OpenTaiko.iOSAutoAdvanceUI) {
 						return 1;
 					}
 
