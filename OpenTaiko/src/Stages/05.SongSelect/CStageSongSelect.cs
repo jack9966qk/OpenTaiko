@@ -359,7 +359,7 @@ internal class CStageSongSelect : CStage {
 			//---------------------
 			if (base.IsFirstDraw) {
 				this.ct登場時アニメ用共通 = new CCounter(0, 100, 3, OpenTaiko.Timer);
-				if (OperatingSystem.IsIOS()) {
+				if (OperatingSystem.IsIOS() && OpenTaiko.iOSAutoAdvanceUI) {
 					// iOS: skip fade-in
 					base.ePhaseID = CStage.EPhase.Common_NORMAL;
 				} else if (OpenTaiko.rPreviousStage == OpenTaiko.stageResults) {
@@ -376,7 +376,7 @@ internal class CStageSongSelect : CStage {
 			#endregion
 
 			#region [ iOS auto-progression into gameplay ]
-			if (OperatingSystem.IsIOS() && _iOSAutoState != EiOSAutoState.Done && base.ePhaseID == CStage.EPhase.Common_NORMAL) {
+			if (OperatingSystem.IsIOS() && OpenTaiko.iOSAutoAdvanceUI && _iOSAutoState != EiOSAutoState.Done && base.ePhaseID == CStage.EPhase.Common_NORMAL) {
 				_iOSAutoSelectFrames++;
 				switch (_iOSAutoState) {
 					case EiOSAutoState.WaitInit:

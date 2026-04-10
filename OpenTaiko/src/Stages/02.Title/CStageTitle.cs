@@ -159,7 +159,7 @@ internal class CStageTitle : CStage {
 			if (base.ePhaseID == CStage.EPhase.Common_NORMAL)    // プラグインの入力占有がない
 			{
 				// iOS: Auto-select Game Start and transition to song select (first launch only)
-				if (OperatingSystem.IsIOS() && bモード選択 && !_iOSAutoProgressDone) {
+				if (OperatingSystem.IsIOS() && OpenTaiko.iOSAutoAdvanceUI && bモード選択 && !_iOSAutoProgressDone) {
 					_iOSAutoProgressFrames++;
 					if (_iOSAutoProgressFrames > 5) {
 						_iOSAutoProgressDone = true;
