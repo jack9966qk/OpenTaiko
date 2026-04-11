@@ -321,6 +321,36 @@ public class GameViewController : UIViewController {
 		CreateTouchOverlay();
 		CreateDebugHud();
 
+		// Register iOS native text input handler for CTextInput (replaces ImGui)
+		global::OpenTaiko.CTextInput.iOSTextInputHandler = (currentText, maxLength, callback) => {
+			InvokeOnMainThread(() => {
+				var alert = UIAlertController.Create(
+					"Search",
+					null,
+					UIAlertControllerStyle.Alert);
+
+				alert.AddTextField(tf => {
+					tf.Text = currentText;
+					tf.Placeholder = "Enter search text";
+					tf.AutocorrectionType = UITextAutocorrectionType.No;
+					tf.ReturnKeyType = UIReturnKeyType.Search;
+				});
+
+				alert.AddAction(UIAlertAction.Create("OK", UIAlertActionStyle.Default, _ => {
+					var text = alert.TextFields?[0].Text ?? "";
+					if (text.Length > maxLength)
+						text = text[..(int)maxLength];
+					callback(text);
+				}));
+
+				alert.AddAction(UIAlertAction.Create("Cancel", UIAlertActionStyle.Cancel, _ => {
+					callback(null);
+				}));
+
+				PresentViewController(alert, true, null);
+			});
+		};
+
 		// Start the display link
 		_displayLink = CADisplayLink.Create(OnFrame);
 		_displayLink.PreferredFramesPerSecond = 60;
