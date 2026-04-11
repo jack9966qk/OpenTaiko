@@ -55,8 +55,16 @@ internal class CSkiaSharpTextRenderer : ITextRenderer {
 			paint.Typeface = SKTypeface.FromFamilyName(fontpath, weight, width, slant);
 
 		//stream・filepathから生成した場合に、style設定をどうすればいいのかがわからない
-		if (File.Exists(fontpath))
-			paint.Typeface = SKTypeface.FromFile(fontpath, 0);
+		if (File.Exists(fontpath)) {
+			if (OperatingSystem.IsIOS()) {
+				// SKTypeface.FromFile can silently return a broken typeface on iOS;
+				// loading via stream works reliably.
+				using var fs = File.OpenRead(fontpath);
+				paint.Typeface = SKTypeface.FromStream(fs);
+			} else {
+				paint.Typeface = SKTypeface.FromFile(fontpath, 0);
+			}
+		}
 
 		if (paint.Typeface == null) {
 			Trace.TraceWarning($"The requested font '{fontpath}' could not be found from a file or font family name. Falling back to SkiaSharp's default typeface.");
