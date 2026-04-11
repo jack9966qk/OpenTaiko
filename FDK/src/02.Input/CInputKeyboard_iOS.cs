@@ -37,6 +37,32 @@ public class CInputKeyboard_iOS : CInputButtonsBase {
 		base.ButtonUp((int)key);
 	}
 
+	private readonly HashSet<int> _touchPressedKeys = new();
+
+	/// <summary>
+	/// Record a key as touch-originated and press it.
+	/// </summary>
+	public void TouchKeyDown(long keyCode) {
+		var key = HIDUsageToSlimDXKey(keyCode);
+		if (key == Key.Unknown || (int)key >= this.ButtonStates.Length) return;
+		_touchPressedKeys.Add((int)key);
+		base.ButtonDown((int)key);
+	}
+
+	/// <summary>
+	/// Release all touch-originated keys. Called after each game frame
+	/// so that touch inputs behave as single-frame pulses.
+	/// Hardware keyboard keys are not affected.
+	/// Only resets isPressed — does not emit release events, since
+	/// the "release" is synthetic (the touch pulse model has no real release).
+	/// </summary>
+	public void ReleaseTouchKeys() {
+		foreach (int key in _touchPressedKeys) {
+			this.ButtonStates[key].isPressed = false;
+		}
+		_touchPressedKeys.Clear();
+	}
+
 	/// <summary>
 	/// Maps UIKeyboardHIDUsage (USB HID Usage Table 0x07) to SlimDXKeys.Key.
 	/// </summary>

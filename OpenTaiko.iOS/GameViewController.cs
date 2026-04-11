@@ -353,6 +353,11 @@ public class GameViewController : UIViewController {
 
 			_game.iOSFrame(delta);
 
+			// Auto-release all touch-originated keys after the frame processes them.
+			// Each touch is a single-frame pulse — the key resets so the next
+			// touch-down always registers as a fresh press.
+			_keyboardInput?.ReleaseTouchKeys();
+
 			if (++_debugHudFrameCount % 60 == 0)
 				UpdateDebugHud();
 		} catch (Exception ex) {
@@ -377,7 +382,6 @@ public class GameViewController : UIViewController {
 	private double DonRadius => (global::OpenTaiko.OpenTaiko.ConfigIni?.nTouchDrumVisual ?? 30) / 100.0;
 
 	private UIView? _touchOverlay;
-	private readonly Dictionary<IntPtr, long> _activeTouches = new();
 
 	private void CreateTouchOverlay() {
 		_touchOverlay = new UIView(View!.Bounds) {
@@ -451,30 +455,17 @@ public class GameViewController : UIViewController {
 			var location = touch.LocationInView(View);
 			long hidCode = HitTestTouchZone(location);
 			if (hidCode >= 0) {
-				_activeTouches[touch.Handle] = hidCode;
-				_keyboardInput?.KeyDown(hidCode);
+				_keyboardInput?.TouchKeyDown(hidCode);
 			}
 		}
 	}
 
 	public override void TouchesEnded(NSSet touches, UIEvent? evt) {
 		base.TouchesEnded(touches, evt);
-		foreach (UITouch touch in touches.Cast<UITouch>()) {
-			if (_activeTouches.TryGetValue(touch.Handle, out long hidCode)) {
-				_keyboardInput?.KeyUp(hidCode);
-				_activeTouches.Remove(touch.Handle);
-			}
-		}
 	}
 
 	public override void TouchesCancelled(NSSet touches, UIEvent? evt) {
 		base.TouchesCancelled(touches, evt);
-		foreach (UITouch touch in touches.Cast<UITouch>()) {
-			if (_activeTouches.TryGetValue(touch.Handle, out long hidCode)) {
-				_keyboardInput?.KeyUp(hidCode);
-				_activeTouches.Remove(touch.Handle);
-			}
-		}
 	}
 
 	#endregion
