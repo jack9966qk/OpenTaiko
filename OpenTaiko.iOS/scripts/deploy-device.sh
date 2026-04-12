@@ -63,7 +63,7 @@ if $IMOBILE; then
   fi
 else
   if [[ -z "$DEVICE" ]]; then
-    DEVICE=$(xcrun devicectl list devices 2>/dev/null | { grep -E 'available.*paired' || true; } | awk '{for(i=1;i<=NF;i++) if($i ~ /^[A-F0-9]{8}-/) print $i}' | head -1)
+    DEVICE=$(xcrun devicectl list devices 2>/dev/null | { grep -E '(available|connected).*paired|connected' || true; } | awk '{for(i=1;i<=NF;i++) if($i ~ /^[A-F0-9]{8}-/) print $i}' | head -1)
     if [[ -z "$DEVICE" ]]; then
       echo "No device found via devicectl. Use --imobile for libimobiledevice."
       echo ""
@@ -94,6 +94,8 @@ if $BUILD; then
   fi
 
   echo "==> Building for ios-arm64 ($CONFIG)..."
+  BUILD_LOG=$(mktemp)
+  trap "rm -f $BUILD_LOG" EXIT
   dotnet build "$CSPROJ" \
     -c "$CONFIG" \
     -r ios-arm64 \
@@ -101,22 +103,15 @@ if $BUILD; then
     -p:CodesignKey="$IDENTITY" \
     -p:CodesignProvision="" \
     "${BUNDLE_ID_ARG[@]}" \
-    2>&1 \
-    | { grep -E "(error CS|error MT|Error\(s\)|Build succeeded|NETSDK|Codesign)" || true; } \
-    | tail -10
+    > "$BUILD_LOG" 2>&1 || true
+  { grep -E "(error CS|error MT|Error\(s\)|Build succeeded|NETSDK|Codesign)" "$BUILD_LOG" || true; } | tail -10
 
   # Check build actually succeeded
   if [[ ! -d "$APP_PATH" ]]; then
-    echo "Build failed — $APP_PATH not found."
-    echo "Re-running build with full output..."
-    dotnet build "$CSPROJ" \
-      -c "$CONFIG" \
-      -r ios-arm64 \
-      -p:RuntimeIdentifier=ios-arm64 \
-      -p:CodesignKey="$IDENTITY" \
-      -p:CodesignProvision="" \
-      "${BUNDLE_ID_ARG[@]}" \
-      2>&1 | tail -30
+    echo "Build failed — $APP_PATH not found. Full build output:"
+    echo "----------------------------------------"
+    cat "$BUILD_LOG"
+    echo "----------------------------------------"
     exit 1
   fi
 fi
