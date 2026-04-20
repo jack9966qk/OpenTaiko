@@ -405,6 +405,52 @@ public abstract class Game : IDisposable {
 	private long _iosStartTimeMs;
 	private bool _iosTimeInitialized;
 
+	// Off-screen FBO for rendering at exact game resolution on iOS.
+	// Eliminates sub-pixel gaps when device resolution != game resolution.
+	private uint _iosFbo;
+	private uint _iosFboColorTex;
+	private uint _iosFboDepthRb;
+	private int _iosFboWidth;
+	private int _iosFboHeight;
+
+	private void EnsureiOSFbo() {
+		int w = GameWindowSize.Width;
+		int h = GameWindowSize.Height;
+		if (_iosFbo != 0 && _iosFboWidth == w && _iosFboHeight == h)
+			return;
+
+		if (_iosFbo != 0) {
+			Gl.DeleteFramebuffer(_iosFbo);
+			Gl.DeleteTexture(_iosFboColorTex);
+			Gl.DeleteRenderbuffer(_iosFboDepthRb);
+		}
+
+		_iosFbo = Gl.GenFramebuffer();
+		Gl.BindFramebuffer(FramebufferTarget.Framebuffer, _iosFbo);
+
+		_iosFboColorTex = Gl.GenTexture();
+		Gl.BindTexture(TextureTarget.Texture2D, _iosFboColorTex);
+		unsafe {
+			Gl.TexImage2D(TextureTarget.Texture2D, 0, (int)InternalFormat.Rgba, (uint)w, (uint)h, 0, PixelFormat.Rgba, PixelType.UnsignedByte, null);
+		}
+		Gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)GLEnum.Linear);
+		Gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)GLEnum.Linear);
+		Gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)GLEnum.ClampToEdge);
+		Gl.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)GLEnum.ClampToEdge);
+		Gl.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, _iosFboColorTex, 0);
+
+		_iosFboDepthRb = Gl.GenRenderbuffer();
+		Gl.BindRenderbuffer(RenderbufferTarget.Renderbuffer, _iosFboDepthRb);
+		Gl.RenderbufferStorage(RenderbufferTarget.Renderbuffer, InternalFormat.DepthComponent16, (uint)w, (uint)h);
+		Gl.FramebufferRenderbuffer(FramebufferTarget.Framebuffer, FramebufferAttachment.DepthAttachment, RenderbufferTarget.Renderbuffer, _iosFboDepthRb);
+
+		var status = Gl.CheckFramebufferStatus(FramebufferTarget.Framebuffer);
+		Console.WriteLine($"[OpenTaiko] iOS FBO: {w}x{h}, status=0x{(int)status:X}");
+
+		_iosFboWidth = w;
+		_iosFboHeight = h;
+	}
+
 	/// <summary>
 	/// Called by the iOS host each frame from CADisplayLink.
 	/// Drives both Update() and Render() in a single call.
@@ -426,10 +472,24 @@ public abstract class Game : IDisposable {
 			AsyncActions.Remove(AsyncActions[0]);
 		}
 
+		// Save device framebuffer, render to intermediate FBO at game resolution
+		Gl.GetInteger(GLEnum.FramebufferBinding, out int deviceFb);
+		EnsureiOSFbo();
+		Gl.BindFramebuffer(FramebufferTarget.Framebuffer, _iosFbo);
+		Gl.Viewport(0, 0, (uint)GameWindowSize.Width, (uint)GameWindowSize.Height);
+
 		Gl.ClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 		Gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
 		Draw();
+
+		// Blit FBO to device framebuffer at native resolution
+		Gl.BindFramebuffer(FramebufferTarget.Framebuffer, (uint)deviceFb);
+		Gl.Viewport(ViewPortOffset.X, ViewPortOffset.Y, (uint)ViewPortSize.X, (uint)ViewPortSize.Y);
+		Gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
+
+		Camera = Matrix4X4<float>.Identity;
+		CTexture.BlitFullScreen(_iosFboColorTex, flipY: true);
 
 		// Periodic GL error check
 		if (_iosFrameCount++ % 300 == 0) {
@@ -444,6 +504,11 @@ public abstract class Game : IDisposable {
 	/// Called by the iOS host when the app is shutting down.
 	/// </summary>
 	public void iOSShutdown() {
+		if (_iosFbo != 0) {
+			Gl.DeleteFramebuffer(_iosFbo);
+			Gl.DeleteTexture(_iosFboColorTex);
+			Gl.DeleteRenderbuffer(_iosFboDepthRb);
+		}
 		CTexture.Terminate();
 		UnloadContent();
 		OnExiting();
