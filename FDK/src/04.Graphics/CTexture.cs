@@ -818,6 +818,36 @@ public class CTexture : IDisposable {
 	public static void ResetDrawDebugCount() { _drawDebugCount = 0; }
 
 	/// <summary>
+	/// Draw a GL texture as a full-screen quad using the shared shader.
+	/// Used by the iOS FBO blit to present the off-screen render target.
+	/// Set flipY=true for FBO textures (OpenGL origin is bottom-left).
+	/// </summary>
+	public static void BlitFullScreen(uint textureHandle, bool flipY = false) {
+		BlendHelper.SetBlend(BlendType.Normal);
+		Game.Gl.UseProgram(ShaderProgram);
+		Game.Gl.BindTexture(TextureTarget.Texture2D, textureHandle);
+
+		unsafe {
+			var mvp = Matrix4X4<float>.Identity;
+			Game.Gl.UniformMatrix4(MVPID, 1, false, (float*)&mvp);
+			var camera = Matrix4X4<float>.Identity;
+			Game.Gl.UniformMatrix4(CameraID, 1, false, (float*)&camera);
+		}
+		Game.Gl.Uniform4(ColorID, new System.Numerics.Vector4(1, 1, 1, 1));
+		Game.Gl.Uniform2(ScaleID, new System.Numerics.Vector2(1, 1));
+		Game.Gl.Uniform4(TextureRectID, flipY
+			? new System.Numerics.Vector4(0, 1, 1, -1)
+			: new System.Numerics.Vector4(0, 0, 1, 1));
+		Game.Gl.Uniform1(NoteModeID, 0);
+		Game.Gl.Uniform1(NoiseEffectID, 0);
+
+		Game.Gl.BindVertexArray(VAO);
+		unsafe {
+			Game.Gl.DrawElements(PrimitiveType.Triangles, IndicesCount, DrawElementsType.UnsignedInt, (void*)0);
+		}
+	}
+
+	/// <summary>
 	/// Creates a solid-color test texture for debugging. Color bytes: R, G, B, A.
 	/// </summary>
 	public static CTexture CreateSolidColorTexture(byte r, byte g, byte b, byte a, int width, int height) {
