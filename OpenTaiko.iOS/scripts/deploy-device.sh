@@ -18,7 +18,7 @@ source "OpenTaiko.iOS/scripts/_signing-helpers.sh"
 CSPROJ="OpenTaiko.iOS/OpenTaiko.iOS.csproj"
 BUNDLE_ID=""
 IDENTITY=""
-APP_PATH="OpenTaiko.iOS/bin/Debug/net8.0-ios/ios-arm64/OpenTaiko.iOS.app"
+APP_PATH="OpenTaiko.iOS/bin/Debug/net10.0-ios/ios-arm64/OpenTaiko.iOS.app"
 DEVICE=""
 UDID=""
 IMOBILE=false
@@ -44,7 +44,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-APP_PATH="OpenTaiko.iOS/bin/${CONFIG}/net8.0-ios/ios-arm64/OpenTaiko.iOS.app"
+APP_PATH="OpenTaiko.iOS/bin/${CONFIG}/net10.0-ios/ios-arm64/OpenTaiko.iOS.app"
 
 # Resolve bundle ID from .csproj if not overridden
 DEFAULT_BUNDLE_ID=$(grep '<ApplicationId' "$CSPROJ" | sed 's/.*>\(.*\)<.*/\1/')
