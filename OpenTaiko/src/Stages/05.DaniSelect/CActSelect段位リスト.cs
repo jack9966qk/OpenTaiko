@@ -695,6 +695,9 @@ class CActSelect段位リスト : CStage {
 	}
 
 	private void tUpdateSongs() {
+		// Filter out SCORE nodes without a Dan chart (e.g. regular TJAs co-located with a Dan TJA
+		// in the same folder, often #NEXTSONG-referenced songs); they'd crash tバーの初期化.
+		listSongs = listSongs.Where(n => n.nodeType != CSongListNode.ENodeType.SCORE || n.score[(int)Difficulty.Dan] != null).ToList();
 		stバー情報 = new STバー情報[listSongs.Count];
 		this.tバーの初期化();
 	}
