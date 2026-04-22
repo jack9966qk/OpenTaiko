@@ -720,7 +720,7 @@ internal class CSkin : IDisposable {
 		tReadSkinConfig();
 
 		//hsHitSoundsInformations = new CHitSounds(Path(@$"Sounds{System.IO.Path.DirectorySeparatorChar}HitSounds{System.IO.Path.DirectorySeparatorChar}HitSounds.json"));
-		hsHitSoundsInformations = new CHitSounds(OpenTaiko.ResolveAssetPath(@$"Global{System.IO.Path.DirectorySeparatorChar}HitSounds"));
+		hsHitSoundsInformations = new CHitSounds(@$"Global{System.IO.Path.DirectorySeparatorChar}HitSounds");
 	}
 
 	public void ReloadSkin() {
