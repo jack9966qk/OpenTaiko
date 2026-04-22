@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+﻿﻿using System.Diagnostics;
 using FDK;
 
 namespace OpenTaiko;
@@ -726,7 +726,7 @@ class TextureLoader {
 
 		#region PuchiChara
 
-		var puchicharaDirs = System.IO.Directory.GetDirectories(OpenTaiko.ResolveAssetPath(OpenTaiko.strEXEのあるフォルダ + GLOBAL + PUCHICHARA));
+		var puchicharaDirs = OpenTaiko.GetMergedDirectories(OpenTaiko.strEXEのあるフォルダ + GLOBAL + PUCHICHARA);
 		OpenTaiko.Skin.Puchichara_Ptn = puchicharaDirs.Length;
 
 		Puchichara = new CPuchichara[OpenTaiko.Skin.Puchichara_Ptn];
@@ -981,7 +981,7 @@ class TextureLoader {
 
 		#region [Character count initialisations]
 
-		var charaDirs = System.IO.Directory.GetDirectories(OpenTaiko.ResolveAssetPath(OpenTaiko.strEXEのあるフォルダ + GLOBAL + CHARACTERS));
+		var charaDirs = OpenTaiko.GetMergedDirectories(OpenTaiko.strEXEのあるフォルダ + GLOBAL + CHARACTERS);
 		OpenTaiko.Skin.Characters_Ptn = charaDirs.Length;
 
 		Characters_Heya_Preview = new CTexture[OpenTaiko.Skin.Characters_Ptn];
