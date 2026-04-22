@@ -2,6 +2,9 @@
 
 ## [0.6.0.99] - 2026-02-13 (Beta)
 
+dSYMs are now embedded in the IPA's Symbols/ directory during local packaging.
+altool --upload-app reads them automatically. Falls back to Fastlane if altool fails.
+Removes broken upload_symbols_to_app_store call and separate dSYM download step.
 - [Chore] Change the unlock conditions for Assimilation
 - [Chore] Add unlock conditions for the Touhou Arrangements Vol.2 folder
 
