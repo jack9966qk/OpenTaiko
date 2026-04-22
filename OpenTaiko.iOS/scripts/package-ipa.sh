@@ -26,7 +26,7 @@ if [[ -n "$BUNDLE_ID" ]]; then
   BUNDLE_ID_ARG=(-p:ApplicationId="$BUNDLE_ID")
 fi
 
-APP_SRC="OpenTaiko.iOS/bin/Release/net8.0-ios/ios-arm64/OpenTaiko.iOS.app"
+APP_SRC="OpenTaiko.iOS/bin/Release/net10.0-ios/ios-arm64/OpenTaiko.iOS.app"
 
 # Build release if needed
 if $BUILD; then

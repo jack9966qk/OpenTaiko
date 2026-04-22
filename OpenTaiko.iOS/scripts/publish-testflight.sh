@@ -61,7 +61,7 @@ echo "    Bundle ID: $BUNDLE_ID"
 echo "    Team: $TEAM_ID"
 echo ""
 
-APP_PATH="OpenTaiko.iOS/bin/Release/net8.0-ios/ios-arm64/OpenTaiko.iOS.app"
+APP_PATH="OpenTaiko.iOS/bin/Release/net10.0-ios/ios-arm64/OpenTaiko.iOS.app"
 
 # Auto-detect signing identity if not provided
 if [[ -z "$IDENTITY" ]]; then
