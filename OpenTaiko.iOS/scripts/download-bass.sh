@@ -3,7 +3,7 @@
 # Output: OpenTaiko.iOS/Libs/{bass24-ios,bassmix24-ios,bass_fx24-ios}/*.xcframework
 #
 # Usage: bash OpenTaiko.iOS/scripts/download-bass.sh
-# Called automatically by deploy.sh / deploy-device.sh if the Libs are missing.
+# Called automatically by deploy.sh when the Libs are missing.
 
 set -euo pipefail
 
