@@ -3,7 +3,7 @@
 # Output: OpenTaiko.iOS/Frameworks/liblua54.xcframework/
 #
 # Usage: bash OpenTaiko.iOS/scripts/build-lua54.sh
-# Called automatically by deploy.sh / deploy-device.sh if the xcframework is missing.
+# Called automatically by deploy.sh when the xcframework is missing.
 
 set -e
 
