@@ -53,16 +53,10 @@ jobs:
           # Export the provisioning profile path so Fastlane can find it
           echo "PROVISIONING_PROFILE_PATH=$PP_PATH" >> $GITHUB_ENV
 
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.2'
-
       - name: Install Fastlane
         run: |
-          gem uninstall multi_json -a -x --force 2>/dev/null || true
-          gem install fastlane multi_json -NV
-
+          sudo gem install multi_json -v 1.15.0 --no-document
+          sudo gem install fastlane --no-document
       - name: Resign IPA
         env:
           SIGNING_IDENTITY: ${{ secrets.SIGNING_IDENTITY }}
