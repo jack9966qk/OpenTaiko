@@ -57,7 +57,9 @@ jobs:
           ruby-version: '3.2'
 
       - name: Install Fastlane
-        run: gem install fastlane multi_json -NV
+        run: |
+          gem uninstall multi_json -a -x --force 2>/dev/null || true
+          gem install fastlane multi_json -NV
 
       - name: Resign IPA
         env:
