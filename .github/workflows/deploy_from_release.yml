@@ -55,17 +55,15 @@ jobs:
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.2'
-          bundler-cache: true
 
       - name: Install Fastlane
-        run: bundle install
-        run: gem install fastlane -NV
+        run: gem install fastlane multi_json -NV
 
       - name: Resign IPA
         env:
           SIGNING_IDENTITY: ${{ secrets.SIGNING_IDENTITY }}
         run: |
-          bundle exec fastlane resign_ipa ipa_path:"$GITHUB_WORKSPACE/OpenTaiko_unsigned.ipa"
+          fastlane resign_ipa ipa_path:"$GITHUB_WORKSPACE/OpenTaiko_unsigned.ipa"
 
       - name: Write App Store Connect API key
         env:
@@ -109,7 +107,7 @@ jobs:
           APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
           APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY }}
         run: |
-          bundle exec fastlane distribute_to_testers
+          fastlane distribute_to_testers
 
       - name: Fallback — Upload via Fastlane
         if: steps.altool_upload.outcome == 'failure'
@@ -119,4 +117,4 @@ jobs:
           APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY }}
         run: |
           echo "altool failed, falling back to Fastlane upload_to_testflight..."
-          bundle exec fastlane upload_ipa ipa_path:"$GITHUB_WORKSPACE/OpenTaiko_unsigned.ipa"
+          fastlane upload_ipa ipa_path:"$GITHUB_WORKSPACE/OpenTaiko_unsigned.ipa"
