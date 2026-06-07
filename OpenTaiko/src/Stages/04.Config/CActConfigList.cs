@@ -304,6 +304,13 @@ internal class CActConfigList : CActivity {
 			CLangManager.LangInstance.GetString("SETTINGS_KEYASSIGN_SYSTEM_DESC"));
 		this.list項目リスト.Add(this.iSystemGoToKeyAssign);
 
+		// Diagnostic: deliberately crash the app to verify crash reporting (e.g. the iOS
+		// CrashLog reports written to Documents/CrashLogs). Kept available in Release so it
+		// can be exercised on TestFlight builds.
+		this.iSystemTriggerCrash = new CItemBase("[TEST] Trigger crash", CItemBase.EPanelType.Normal,
+			"Deliberately crashes the app to verify crash reporting. The crash report is written to Documents/CrashLogs.");
+		this.list項目リスト.Add(this.iSystemTriggerCrash);
+
 #if DEBUG
 		this.debugImGui = new CItemToggle("[DEBUG ONLY] Show ImGui Debug Window", OpenTaiko.ConfigIni.DEBUG_bShowImgui);
 		this.list項目リスト.Add(this.debugImGui);
@@ -712,6 +719,12 @@ internal class CActConfigList : CActivity {
 				// Running in a separate thread so the game doesn't freeze
 				ScoreIniImportThread = new Thread(CScoreIni_Importer.ImportScoreInisToSavesDb3);
 				ScoreIniImportThread.Start();
+			} else if (this.list項目リスト[this.n現在の選択項目] == this.iSystemTriggerCrash) {
+				// Deliberate crash to verify crash reporting. Throwing an unhandled exception
+				// is caught by the game-loop handler (writes a managed .log report) and, on
+				// iOS Release builds, the ensuing runtime abort is also captured by the native
+				// signal handler (writes an Apple-style .crash report) — see Documents/CrashLogs.
+				throw new Exception("Manual test crash triggered from the Settings menu (verifying crash reporting).");
 			}
 			#endregion
 		}
@@ -1648,6 +1661,7 @@ internal class CActConfigList : CActivity {
 	private CItemBase iSystemReloadDTX;                 // #32081 2013.10.21 yyagi
 	private CItemBase iSystemHardReloadDTX;
 	private CItemBase isSystemImportingScore;
+	private CItemBase iSystemTriggerCrash;
 	private CItemToggle iSystemGameEventBroadcasting;
 	private CItemInteger iSystemGameEventBroadcastingPort;
 
