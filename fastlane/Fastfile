@@ -26,7 +26,8 @@ platform :ios do
     resign(
       ipa: ipa_path,
       signing_identity: ENV["SIGNING_IDENTITY"],
-      provisioning_profile: ENV["PROVISIONING_PROFILE_PATH"]
+      provisioning_profile: ENV["PROVISIONING_PROFILE_PATH"],
+      bundle_id: APP_IDENTIFIER
     )
   end
 
