@@ -52,7 +52,7 @@ platform :ios do
     upload_to_testflight(
       api_key: asc_api_key,
       app_identifier: APP_IDENTIFIER,
-      platform: "ios",
+      app_platform: "ios",
       distribute_only: true,
       groups: BETA_GROUPS,
       skip_waiting_for_build_processing: false
