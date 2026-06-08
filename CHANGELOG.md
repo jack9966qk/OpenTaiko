@@ -2,6 +2,10 @@
 
 ## [0.6.0.99] - 2026-02-13 (Beta)
 
+The unsigned IPA is built with the dev bundle id com.opentaiko.OpenTaiko,
+so without overriding it the resign kept that id and altool uploaded the
+build to the wrong App Store Connect app. Pass bundle_id: APP_IDENTIFIER
+to resign so the build lands in the com.opentaiko.mobile TestFlight app.
 fastlane eagerly loads all default actions, including ones that require
 representable/json -> multi_json, which is not a hard dependency of
 representable and so is otherwise excluded from the bundle.
