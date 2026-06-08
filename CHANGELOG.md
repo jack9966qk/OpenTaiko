@@ -2,6 +2,10 @@
 
 ## [0.6.0.99] - 2026-02-13 (Beta)
 
+Resolves 'Gem::MissingSpecError: Could not find multi_json' by pinning
+Fastlane's dependency tree through a root Gemfile + bundler, replacing
+the fragile 'sudo gem install fastlane' step (ruby/setup-ruby with
+bundler-cache, and 'bundle exec fastlane').
 dSYMs are now embedded in the IPA's Symbols/ directory during local packaging.
 altool --upload-app reads them automatically. Falls back to Fastlane if altool fails.
 Removes broken upload_symbols_to_app_store call and separate dSYM download step.
