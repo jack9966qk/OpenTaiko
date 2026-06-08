@@ -2,6 +2,9 @@
 
 ## [0.6.0.99] - 2026-02-13 (Beta)
 
+fastlane eagerly loads all default actions, including ones that require
+representable/json -> multi_json, which is not a hard dependency of
+representable and so is otherwise excluded from the bundle.
 Resolves 'Gem::MissingSpecError: Could not find multi_json' by pinning
 Fastlane's dependency tree through a root Gemfile + bundler, replacing
 the fragile 'sudo gem install fastlane' step (ruby/setup-ruby with
