@@ -53,15 +53,16 @@ jobs:
           # Export the provisioning profile path so Fastlane can find it
           echo "PROVISIONING_PROFILE_PATH=$PP_PATH" >> $GITHUB_ENV
 
-      - name: Install Fastlane
-        run: |
-          sudo gem install multi_json -v 1.15.0 --no-document
-          sudo gem install fastlane --no-document
+      - name: Set up Ruby and Fastlane
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
       - name: Resign IPA
         env:
           SIGNING_IDENTITY: ${{ secrets.SIGNING_IDENTITY }}
         run: |
-          fastlane resign_ipa ipa_path:"$GITHUB_WORKSPACE/OpenTaiko_unsigned.ipa"
+          bundle exec fastlane resign_ipa ipa_path:"$GITHUB_WORKSPACE/OpenTaiko_unsigned.ipa"
 
       - name: Write App Store Connect API key
         env:
@@ -105,7 +106,7 @@ jobs:
           APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
           APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY }}
         run: |
-          fastlane distribute_to_testers
+          bundle exec fastlane distribute_to_testers
 
       - name: Fallback — Upload via Fastlane
         if: steps.altool_upload.outcome == 'failure'
@@ -115,4 +116,4 @@ jobs:
           APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY }}
         run: |
           echo "altool failed, falling back to Fastlane upload_to_testflight..."
-          fastlane upload_ipa ipa_path:"$GITHUB_WORKSPACE/OpenTaiko_unsigned.ipa"
+          bundle exec fastlane upload_ipa ipa_path:"$GITHUB_WORKSPACE/OpenTaiko_unsigned.ipa"
