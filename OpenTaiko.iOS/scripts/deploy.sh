@@ -11,7 +11,7 @@
 #   github      Build an unsigned .ipa (+ dSYM) and publish it as a GitHub release
 #
 # Common options:
-#   --clean            Uninstall the app before installing (sim/device)
+#   --clean            Wipe obj/+bin/ (true clean rebuild) and uninstall the app before installing
 #   --no-build         Skip the build step (reuse an existing .app)
 #   --release          Build Release instead of Debug (sim/device; ipa is always Release)
 #   --bundle-id ID     Override the bundle identifier (default: from .csproj)
@@ -136,6 +136,13 @@ ios_build() {
   local config="$1" rid="$2"; shift 2
   APP_PATH="OpenTaiko.iOS/bin/${config}/net10.0-ios/${rid}/OpenTaiko.iOS.app"
   bootstrap_ios_deps
+  # A clean build must wipe obj/+bin/ of all three projects: incremental AOT rebuilds pollute
+  # obj/ and produce a load_aot_module / mono_runtime_init_checked abort at startup. (--clean
+  # also uninstalls the installed app below; this handles the build artifacts.)
+  if $CLEAN; then
+    echo "==> Clean: wiping obj/ and bin/ (OpenTaiko.iOS, FDK, OpenTaiko)..."
+    rm -rf OpenTaiko.iOS/obj OpenTaiko.iOS/bin FDK/obj FDK/bin OpenTaiko/obj OpenTaiko/bin
+  fi
   local log rc attempt
   log=$(mktemp)
   for attempt in 1 2; do
