@@ -76,6 +76,7 @@ internal static class CrashLog {
 			}
 			foreach (string file in Directory.GetFiles(crashDir, "crash_*.crash")) {
 				string content = File.ReadAllText(file);
+				if (content.Length == 0) continue; // empty pending native file (no crash this session)
 				Console.WriteLine($"[OpenTaiko] Previous crash report ({Path.GetFileName(file)}):\n{content}");
 			}
 		} catch {
@@ -100,6 +101,15 @@ internal static class CrashLog {
 	private static int _handling; // reentrancy guard for the signal handler
 	private static bool _installed;
 
+	// Pre-pinned, pre-formatted report data + a dedicated signal stack, so the crash handler
+	// itself does zero managed allocation / File I/O (which would deadlock after a real fault).
+	private static GCHandle _prefixHandle, _pathHandle;
+	private static IntPtr _prefixPtr, _pathPtr;
+	private static int _prefixLen;
+	private static IntPtr _altStack;
+	private const int AltStackSize = 64 * 1024;
+	private const int O_WRONLY = 0x0001, O_TRUNC = 0x0400;
+
 	// Environment captured once at install time (UIKit/Foundation access is unsafe from
 	// within a signal handler, so we snapshot everything up front).
 	private static string _procName = "OpenTaiko";
@@ -113,11 +123,23 @@ internal static class CrashLog {
 		if (_installed) return;
 		_installed = true;
 		CaptureEnvironment();
+		PrepareNativeReport();
 		InstallSignalHandlers();
+		// Capture unhandled managed exceptions that escape GameViewController.OnFrame's try/catch —
+		// e.g. on background loader threads during stage transitions. Gives a full C# stack trace
+		// (no symbolication needed). Native faults are handled separately by the signal handlers.
+		AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+			Write(e.ExceptionObject as Exception, "UnhandledException");
 	}
 
 	private static unsafe void InstallSignalHandlers() {
 		try {
+			// Run handlers on a dedicated stack (SA_ONSTACK below) so a stack-overflow crash can
+			// still be caught — the faulting thread's own stack is exhausted.
+			_altStack = Marshal.AllocHGlobal(AltStackSize);
+			var ss = new stack_t { ss_sp = _altStack, ss_size = AltStackSize, ss_flags = 0 };
+			sigaltstack(ref ss, IntPtr.Zero);
+
 			// [UnmanagedCallersOnly] + &method gives a native function pointer whose
 			// native→managed wrapper is generated at AOT time. (Marshal.GetFunctionPointerForDelegate
 			// fails here: its wrapper would need JIT, unavailable in aot-only mode.)
@@ -136,7 +158,7 @@ internal static class CrashLog {
 	}
 
 	[UnmanagedCallersOnly]
-	private static void NativeSignalHandler(int sig, IntPtr info, IntPtr ucontext) {
+	private static unsafe void NativeSignalHandler(int sig, IntPtr info, IntPtr ucontext) {
 		bool reentrant = Interlocked.Exchange(ref _handling, 1) != 0;
 		IntPtr faultAddr = info != IntPtr.Zero ? Marshal.ReadIntPtr(info, 24 /* si_addr offset */) : IntPtr.Zero;
 
@@ -144,10 +166,26 @@ internal static class CrashLog {
 		// managed null-derefs Mono converts to NullReferenceExceptions. In both cases we just
 		// forward to the previously installed (Mono/default) handler.
 		bool likelyManagedNull = (sig == SIGSEGV || sig == SIGBUS) && (ulong)faultAddr < NullDerefGuardLimit;
-		if (!reentrant && !likelyManagedNull) {
-			try {
-				WriteNativeReport(sig, faultAddr);
-			} catch {
+		if (!reentrant && !likelyManagedNull && _prefixPtr != IntPtr.Zero && _pathPtr != IntPtr.Zero) {
+			// Async-signal-safe report: open the (pre-created) file, write the pre-formatted prefix
+			// + Binary Images, then a signal line and a raw backtrace. No managed alloc/GC/locks.
+			int fd = open(_pathPtr, O_WRONLY | O_TRUNC);
+			if (fd >= 0) {
+				write(fd, _prefixPtr, _prefixLen);
+				byte* line = stackalloc byte[192];
+				int p = 0;
+				p = Ascii(line, p, "\nException Type:  ");
+				p = Ascii(line, p, SignalName(sig));
+				p = Ascii(line, p, " (signal ");
+				p = Dec(line, p, sig);
+				p = Ascii(line, p, ")\nException Codes: fault address ");
+				p = Hex(line, p, (ulong)faultAddr);
+				p = Ascii(line, p, "\n\nThread 0 Crashed (symbolicate each frame via the Binary Images above):\n");
+				write(fd, (IntPtr)line, p);
+				void** frames = stackalloc void*[128];
+				int fn = backtrace(frames, 128);
+				backtrace_symbols_fd(frames, fn, fd);
+				close(fd);
 			}
 		}
 
@@ -169,96 +207,75 @@ internal static class CrashLog {
 		// else: return — the faulting instruction re-runs and hits the restored handler.
 	}
 
-	private static unsafe void WriteNativeReport(int sig, IntPtr faultAddr) {
-		const int MaxFrames = 128;
-		IntPtr* frames = stackalloc IntPtr[MaxFrames];
-		int n = backtrace((void**)frames, MaxFrames);
-
-		var sb = new StringBuilder();
-		sb.Append(BuildHeader($"{SignalName(sig)} (signal {sig})", $"fault address 0x{(ulong)faultAddr:x16}"));
-
-		sb.Append("Thread 0 Crashed:\n");
-		// Track unique images appearing in the backtrace for the Binary Images section.
-		var imageBases = new System.Collections.Generic.List<IntPtr>();
-		for (int i = 0; i < n; i++) {
-			IntPtr addr = frames[i];
-			string imageName = "???";
-			ulong fbase = 0;
-			string symbolSuffix = "";
-			if (dladdr(addr, out Dl_info dl) != 0) {
-				fbase = (ulong)dl.dli_fbase;
-				if (dl.dli_fname != IntPtr.Zero)
-					imageName = Path.GetFileName(Marshal.PtrToStringAnsi(dl.dli_fname) ?? "???");
-				if (!imageBases.Contains(dl.dli_fbase) && dl.dli_fbase != IntPtr.Zero)
-					imageBases.Add(dl.dli_fbase);
-				if (dl.dli_sname != IntPtr.Zero) {
-					string sname = Marshal.PtrToStringAnsi(dl.dli_sname) ?? "";
-					ulong saddr = (ulong)dl.dli_saddr;
-					symbolSuffix = $"  ({sname} + {(ulong)addr - saddr})";
-				}
-			}
-			// Apple frame layout: "<idx> <image> <absoluteAddr> <imageLoadAddr> + <offset>"
-			ulong off = fbase != 0 ? (ulong)addr - fbase : 0;
-			sb.Append(i.ToString().PadRight(4))
-			  .Append(imageName.PadRight(32))
-			  .Append("0x").Append(((ulong)addr).ToString("x16"))
-			  .Append(" 0x").Append(fbase.ToString("x"))
-			  .Append(" + ").Append(off)
-			  .Append(symbolSuffix)
-			  .Append('\n');
-		}
-
-		sb.Append("\nBinary Images:\n");
-		foreach (IntPtr header in imageBases) {
-			string name = "???";
-			string path = "";
-			if (dladdr(header, out Dl_info dl) != 0 && dl.dli_fname != IntPtr.Zero) {
-				path = Marshal.PtrToStringAnsi(dl.dli_fname) ?? "";
-				name = Path.GetFileName(path);
-			}
-			TryGetImageInfo(header, out string uuid, out ulong textSize, out int cpuType);
-			ulong start = (ulong)header;
-			ulong end = textSize > 0 ? start + textSize - 1 : start;
-			sb.Append("0x").Append(start.ToString("x"))
-			  .Append(" - 0x").Append(end.ToString("x"))
-			  .Append(' ').Append(name)
-			  .Append(' ').Append(CpuName(cpuType))
-			  .Append("  <").Append(uuid).Append("> ")
-			  .Append(path)
-			  .Append('\n');
-		}
-
-		sb.Append("\nSymbolicate a frame with:\n")
-		  .Append("  atos -o <binary>.dSYM/Contents/Resources/DWARF/<binary> -l <image load addr> <frame addr>\n");
-
-		WriteReportFile(sb.ToString(), SignalName(sig));
-		Console.Error.WriteLine($"[OpenTaiko CRASH] Native {SignalName(sig)} captured to Documents/CrashLogs/");
-	}
-
-	private static void WriteReportFile(string content, string source) {
+	// Builds the report path + prefix (header + Binary Images table) once at startup, pinned, so
+	// the signal handler can emit them without allocating. Also retains a native crash left from
+	// the previous session and (re)creates an empty pending file the handler opens + truncates.
+	private static unsafe void PrepareNativeReport() {
 		try {
-			string crashDir = GetCrashDir();
-			Directory.CreateDirectory(crashDir);
-			string timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss_fff");
-			string filename = $"crash_{timestamp}_{source}.crash";
-			File.WriteAllText(Path.Combine(crashDir, filename), content);
+			string dir = GetCrashDir();
+			Directory.CreateDirectory(dir);
+			string path = Path.Combine(dir, "crash_native_latest.crash");
+			if (File.Exists(path) && new FileInfo(path).Length > 0) {
+				try { File.Move(path, Path.Combine(dir, $"crash_{DateTime.UtcNow:yyyyMMdd_HHmmss_fff}_native.crash")); } catch { }
+			}
+			File.WriteAllText(path, "");
+
+			byte[] pathBytes = Encoding.UTF8.GetBytes(path + "\0");
+			_pathHandle = GCHandle.Alloc(pathBytes, GCHandleType.Pinned);
+			_pathPtr = _pathHandle.AddrOfPinnedObject();
+
+			byte[] prefix = Encoding.UTF8.GetBytes(BuildReportPrefix());
+			_prefixHandle = GCHandle.Alloc(prefix, GCHandleType.Pinned);
+			_prefixPtr = _prefixHandle.AddrOfPinnedObject();
+			_prefixLen = prefix.Length;
 		} catch {
 		}
 	}
 
-	private static string BuildHeader(string exceptionType, string detail) {
+	private static unsafe string BuildReportPrefix() {
 		var sb = new StringBuilder();
 		sb.Append("Incident Identifier: ").Append(Guid.NewGuid().ToString().ToUpperInvariant()).Append('\n');
 		sb.Append("Process:             ").Append(_procName).Append('\n');
 		sb.Append("Identifier:          ").Append(_bundleId).Append('\n');
 		sb.Append("Version:             ").Append(_version).Append(" (").Append(_build).Append(")\n");
 		sb.Append("OS Version:          ").Append(_os).Append("  Device: ").Append(_model).Append('\n');
-		sb.Append("Date/Time:           ").Append(DateTime.UtcNow.ToString("O")).Append('\n');
-		if (!string.IsNullOrEmpty(detail))
-			sb.Append("Exception Codes:     ").Append(detail).Append('\n');
-		sb.Append('\n');
-		sb.Append("Exception Type:      ").Append(exceptionType).Append("\n\n");
+		sb.Append("Session Start:       ").Append(DateTime.UtcNow.ToString("O")).Append('\n');
+		sb.Append("\nBinary Images:\n");
+		uint count = _dyld_image_count();
+		for (uint i = 0; i < count; i++) {
+			IntPtr header = _dyld_get_image_header(i);
+			string fullPath = Marshal.PtrToStringAnsi(_dyld_get_image_name(i)) ?? "???";
+			TryGetImageInfo(header, out string uuid, out ulong textSize, out int cpuType);
+			ulong start = (ulong)header;
+			ulong end = textSize > 0 ? start + textSize - 1 : start;
+			sb.Append("0x").Append(start.ToString("x")).Append(" - 0x").Append(end.ToString("x"))
+			  .Append(' ').Append(Path.GetFileName(fullPath)).Append(' ').Append(CpuName(cpuType))
+			  .Append("  <").Append(uuid).Append("> ").Append(fullPath).Append('\n');
+		}
+		sb.Append("\nSymbolicate a frame: atos -o <App>.app.dSYM/Contents/Resources/DWARF/<App> -l <image load addr above> <frame addr below>\n");
 		return sb.ToString();
+	}
+
+	// ---- async-signal-safe formatting (writes into a caller-provided stack buffer; no alloc) --
+	private static unsafe int Ascii(byte* buf, int pos, string s) {
+		for (int i = 0; i < s.Length; i++) buf[pos++] = (byte)s[i];
+		return pos;
+	}
+	private static unsafe int Hex(byte* buf, int pos, ulong v) {
+		buf[pos++] = (byte)'0'; buf[pos++] = (byte)'x';
+		for (int shift = 60; shift >= 0; shift -= 4) {
+			int d = (int)((v >> shift) & 0xF);
+			buf[pos++] = (byte)(d < 10 ? '0' + d : 'a' + d - 10);
+		}
+		return pos;
+	}
+	private static unsafe int Dec(byte* buf, int pos, int v) {
+		if (v == 0) { buf[pos++] = (byte)'0'; return pos; }
+		byte* tmp = stackalloc byte[12];
+		int t = 0; uint u = (uint)v;
+		while (u > 0) { tmp[t++] = (byte)('0' + (int)(u % 10)); u /= 10; }
+		while (t > 0) buf[pos++] = tmp[--t];
+		return pos;
 	}
 
 	// ---- Mach-O header parsing (read-only; used only while building a report) -----------
@@ -322,7 +339,7 @@ internal static class CrashLog {
 		SIGBUS => "SIGBUS",
 		SIGSEGV => "SIGSEGV",
 		SIGSYS => "SIGSYS",
-		_ => $"SIG{sig}",
+		_ => "SIGNAL", // all arms return interned literals — safe to call from the signal handler
 	};
 
 	private static void CaptureEnvironment() {
@@ -364,14 +381,6 @@ internal static class CrashLog {
 		public int sa_flags;
 	}
 
-	[StructLayout(LayoutKind.Sequential)]
-	private struct Dl_info {
-		public IntPtr dli_fname;
-		public IntPtr dli_fbase;
-		public IntPtr dli_sname;
-		public IntPtr dli_saddr;
-	}
-
 	[DllImport("libc", SetLastError = true)]
 	private static extern int sigaction(int sig, ref sigaction_t act, out sigaction_t oldact);
 
@@ -382,10 +391,33 @@ internal static class CrashLog {
 	private static extern unsafe int backtrace(void** array, int size);
 
 	[DllImport("libc")]
-	private static extern int dladdr(IntPtr addr, out Dl_info info);
-
-	[DllImport("libc")]
 	private static extern int sysctlbyname(string name, byte[]? oldp, ref nuint oldlenp, IntPtr newp, nuint newlen);
+
+	// Async-signal-safe primitives used inside the crash handler, plus dyld image enumeration
+	// and sigaltstack used at install time.
+	[DllImport("libc", SetLastError = true)]
+	private static extern int open(IntPtr path, int oflag);
+	[DllImport("libc")]
+	private static extern nint write(int fd, IntPtr buf, nint count);
+	[DllImport("libc")]
+	private static extern int close(int fd);
+	[DllImport("libc")]
+	private static extern unsafe void backtrace_symbols_fd(void** array, int size, int fd);
+	[DllImport("libc")]
+	private static extern uint _dyld_image_count();
+	[DllImport("libc")]
+	private static extern IntPtr _dyld_get_image_name(uint index);
+	[DllImport("libc")]
+	private static extern IntPtr _dyld_get_image_header(uint index);
+	[DllImport("libc")]
+	private static extern int sigaltstack(ref stack_t ss, IntPtr oss);
+
+	[StructLayout(LayoutKind.Sequential)]
+	private struct stack_t {
+		public IntPtr ss_sp;
+		public nint ss_size;
+		public int ss_flags;
+	}
 #else
 	/// <summary>No-op on Debug builds (see class summary for why native handlers are Release-only).</summary>
 	public static void Install() { }
