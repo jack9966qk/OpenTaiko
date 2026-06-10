@@ -2,6 +2,11 @@
 
 ## [0.6.0.99] - 2026-02-13 (Beta)
 
+The release run distributed the latest *already-processed* build, so a
+freshly uploaded build (still processing) was skipped in favor of the
+previous one. Read the build number/version from the IPA and distribute
+that specific build (waiting for it to process); fall back to latest when
+no IPA is present (manual distribute workflow).
 The unsigned IPA is built with the dev bundle id com.opentaiko.OpenTaiko,
 so without overriding it the resign kept that id and altool uploaded the
 build to the wrong App Store Connect app. Pass bundle_id: APP_IDENTIFIER
