@@ -106,7 +106,14 @@ jobs:
           APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
           APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY }}
         run: |
-          bundle exec fastlane distribute_to_testers
+          # Read the exact build/version from the IPA so we distribute the build we just
+          # uploaded, not whichever build happens to be the latest already-processed one.
+          unzip -o -q "$GITHUB_WORKSPACE/OpenTaiko_unsigned.ipa" 'Payload/*.app/Info.plist' -d "$RUNNER_TEMP/ipa_info"
+          PLIST=$(find "$RUNNER_TEMP/ipa_info/Payload" -maxdepth 2 -name Info.plist | head -1)
+          BUILD=$(/usr/libexec/PlistBuddy -c "Print CFBundleVersion" "$PLIST")
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$PLIST")
+          echo "Distributing build $VERSION ($BUILD)"
+          bundle exec fastlane distribute_to_testers build_number:"$BUILD" app_version:"$VERSION"
 
       - name: Fallback — Upload via Fastlane
         if: steps.altool_upload.outcome == 'failure'

@@ -49,20 +49,17 @@ platform :ios do
 
   desc "Distributes a processed build on App Store Connect to the beta group"
   lane :distribute_to_testers do |options|
-    # Distribute the exact build just uploaded (read from the IPA at the release workflow's
-    # download path), not merely the latest *already-processed* build. Otherwise a release run
-    # distributes an older build while the freshly uploaded one is still processing. With no IPA
-    # present (e.g. the manual distribute workflow) it falls back to the latest build.
-    ipa = options[:ipa_path] || File.join(ENV["GITHUB_WORKSPACE"].to_s, "OpenTaiko_unsigned.ipa")
-    build_number = nil
-    app_version = nil
-    if File.exist?(ipa)
-      begin
-        build_number = FastlaneCore::IpaFileAnalyser.fetch_app_build_number(ipa)
-        app_version = FastlaneCore::IpaFileAnalyser.fetch_app_version(ipa)
-      rescue => e
-        UI.important("Could not read build info from #{ipa} (#{e}); distributing the latest build")
-      end
+    # Distribute the exact build just uploaded (passed as build_number/app_version by the
+    # release workflow, read from the IPA with PlistBuddy), not merely the latest
+    # *already-processed* build. Otherwise a release run distributes an older build while the
+    # freshly uploaded one is still processing. With no build given (e.g. the manual distribute
+    # workflow) it falls back to the latest build.
+    build_number = options[:build_number]
+    app_version = options[:app_version]
+    if build_number.to_s.empty?
+      UI.important("No build_number given; distributing the latest build")
+      build_number = nil
+      app_version = nil
     end
 
     upload_to_testflight(
