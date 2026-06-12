@@ -2,6 +2,12 @@
 
 ## [0.6.0.99] - 2026-02-13 (Beta)
 
+The release deploy distributed the latest *already-processed* build instead of
+the one just uploaded: FastlaneCore::IpaFileAnalyser.fetch_app_build_number is
+undefined on the runner's fastlane, so the rescue fell back to 'distribute
+latest'. Read CFBundleVersion/CFBundleShortVersionString from the IPA with
+PlistBuddy in the workflow and pass them explicitly so distribute_only targets
+and waits for the exact build.
 The release run distributed the latest *already-processed* build, so a
 freshly uploaded build (still processing) was skipped in favor of the
 previous one. Read the build number/version from the IPA and distribute
