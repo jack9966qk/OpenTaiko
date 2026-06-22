@@ -14,6 +14,13 @@ public class CActivity {
 	}
 	public List<CActivity> ChildActivities;
 
+	// Whether this activity's managed/unmanaged resources are currently created. Lets the mount path
+	// (OpenTaiko.MountActivity) idempotently guarantee CreateManagedResource() ran BEFORE Activate() —
+	// activities use those resources inside Activate() (e.g. fonts), and neither the startup pre-pass nor
+	// the lazy path reliably created them on iOS, which surfaced as NREs in Result/Config/etc.
+	public bool bManagedResourceCreated { get; private set; }
+	public bool bUnmanagedResourceCreated { get; private set; }
+
 	/// <summary>
 	/// <para>初めて On進行描画() を呼び出す場合に true を示す。（On活性化() 内で true にセットされる。）</para>
 	/// <para>このフラグは、On活性化() では行えないタイミングのシビアな初期化を On進行描画() で行うために準備されている。利用は必須ではない。</para>
@@ -80,6 +87,7 @@ public class CActivity {
 		// すべての 子Activity の Managed リソースを作成する。
 		foreach (CActivity activity in this.ChildActivities)
 			activity.CreateManagedResource();
+		this.bManagedResourceCreated = true;
 	}
 
 	/// <summary>
@@ -93,6 +101,7 @@ public class CActivity {
 		// すべての 子Activity の Unmanaged リソースを作成する。
 		foreach (CActivity activity in this.ChildActivities)
 			activity.CreateUnmanagedResource();
+		this.bUnmanagedResourceCreated = true;
 	}
 
 	/// <summary>
@@ -109,6 +118,7 @@ public class CActivity {
 		// すべての 子Activity の Unmanaged リソースを解放する。
 		foreach (CActivity activity in this.ChildActivities)
 			activity.ReleaseUnmanagedResource();
+		this.bUnmanagedResourceCreated = false;
 	}
 
 	/// <summary>
@@ -126,6 +136,7 @@ public class CActivity {
 		// すべての 子Activity の Managed リソースを解放する。
 		foreach (CActivity activity in this.ChildActivities)
 			activity.ReleaseManagedResource();
+		this.bManagedResourceCreated = false;
 	}
 
 	/// <summary>
