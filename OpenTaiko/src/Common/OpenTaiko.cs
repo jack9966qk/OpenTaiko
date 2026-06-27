@@ -309,7 +309,7 @@ internal class OpenTaiko : Game {
 	/// release. (Ported from the dev ios_port branch; adapted to drive the 0.6.1 Lua stages via synthetic
 	/// input instead of poking the old C# stages directly.)
 	/// </summary>
-	public static bool iOSAutoAdvanceUI = false;
+	public static bool iOSAutoAdvanceUI = true;
 
 	/// <summary>
 	/// On iOS, merge subdirectories from both Documents and bundle for a given path.
