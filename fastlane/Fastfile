@@ -79,11 +79,14 @@ platform :ios do
     asc_api_key
     app = Spaceship::ConnectAPI::App.find(APP_IDENTIFIER)
     UI.user_error!("App #{APP_IDENTIFIER} not found for this API key") if app.nil?
-    builds = app.get_builds(sort: "-uploadedDate", includes: "preReleaseVersion", limit: 25)
+    builds = app.get_builds(sort: "-uploadedDate", includes: "preReleaseVersion,buildBetaDetail,betaAppReviewSubmission", limit: 25)
     UI.important("Recent builds for #{APP_IDENTIFIER} (app id #{app.id}):")
     builds.each do |b|
       train = b.pre_release_version&.version
-      UI.message("  v#{train} (build #{b.version})  state=#{b.processing_state}  uploaded=#{b.uploaded_date}")
+      ext = (b.build_beta_detail&.external_build_state rescue nil) || "-"
+      int = (b.build_beta_detail&.internal_build_state rescue nil) || "-"
+      review = (b.beta_app_review_submission&.beta_review_state rescue nil) || "not-submitted"
+      UI.message("  v#{train} (build #{b.version})  proc=#{b.processing_state}  ext=#{ext}  int=#{int}  review=#{review}  uploaded=#{b.uploaded_date}")
     end
   end
 end
