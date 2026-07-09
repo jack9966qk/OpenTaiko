@@ -2,6 +2,13 @@
 
 ## [0.6.0.99] - 2026-02-13 (Beta)
 
+App Store Connect can return a freshly uploaded build without the
+buildBetaDetail relationship while processing settles; pilot's
+ready_for_beta_submission? then raises 'No build_beta_detail included'
+(fastlane issue 20654, still present in 2.237.0, the latest release).
+This failed the distribute step of the 0.6.1.0-ios-beta.16 release run
+right after a successful upload. Retry the distribution for up to ten
+minutes instead of failing the run.
 The release deploy distributed the latest *already-processed* build instead of
 the one just uploaded: FastlaneCore::IpaFileAnalyser.fetch_app_build_number is
 undefined on the runner's fastlane, so the rescue fell back to 'distribute
