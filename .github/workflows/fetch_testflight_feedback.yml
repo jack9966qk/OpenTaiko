@@ -1,0 +1,45 @@
+name: Fetch TestFlight feedback
+
+# Fetches tester feedback (screenshot and crash submissions) from App Store
+# Connect and uploads it as a workflow artifact: raw JSON, screenshot images,
+# crash logs and a summary.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_pages:
+        description: 'Max pages per feedback type (200 items per page)'
+        required: false
+        default: '10'
+
+jobs:
+  fetch:
+    name: Fetch feedback
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      - name: Fetch feedback from App Store Connect
+        env:
+          APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY }}
+          MAX_PAGES: ${{ inputs.max_pages }}
+        run: bundle exec ruby .github/scripts/fetch_testflight_feedback.rb feedback_out
+
+      - name: Upload feedback artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: testflight-feedback
+          path: feedback_out
+          retention-days: 30
