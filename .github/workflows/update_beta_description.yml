@@ -1,0 +1,38 @@
+name: Update TestFlight beta app description
+
+# Updates the TestFlight Test Information description from
+# fastlane/metadata/beta_app_description.txt. Dispatch only for now so that
+# committing the file cannot overwrite App Store Connect by accident. Once the
+# file holds the authoritative text, uncomment the push trigger to make the
+# description follow the repo automatically:
+#
+#   push:
+#     branches: [main]
+#     paths: [fastlane/metadata/beta_app_description.txt]
+
+on:
+  workflow_dispatch:
+
+jobs:
+  update:
+    name: Update beta app description
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      - name: Update description on App Store Connect
+        env:
+          APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY }}
+        run: bundle exec ruby .github/scripts/update_beta_description.rb fastlane/metadata/beta_app_description.txt

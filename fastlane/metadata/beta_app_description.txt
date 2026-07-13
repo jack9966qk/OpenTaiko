@@ -1,0 +1,1 @@
+OpenTaiko is a free, open source taiko style rhythm game create by 0auBSQ. This is an iOS port of OpenTaiko developed by Jack. Please feel free to send feedback through TestFlight, on GitHub/Discord, or directly to jack9966qk@gmail.com.

@@ -84,6 +84,14 @@ jobs:
           echo "API_KEY_PATH=$API_KEY_PATH" >> $GITHUB_ENV
           echo "API_KEY_DIR=$RUNNER_TEMP/keys" >> $GITHUB_ENV
 
+      - name: Write What to Test from the release notes
+        env:
+          RELEASE_BODY: ${{ github.event.release.body }}
+        run: |
+          # Via an env var (not inline interpolation) so the body cannot inject shell.
+          printf '%s' "$RELEASE_BODY" > "$RUNNER_TEMP/whats_new.txt"
+          echo "CHANGELOG_PATH=$RUNNER_TEMP/whats_new.txt" >> $GITHUB_ENV
+
       - name: Upload to TestFlight via altool
         id: altool_upload
         continue-on-error: true
@@ -113,7 +121,7 @@ jobs:
           BUILD=$(/usr/libexec/PlistBuddy -c "Print CFBundleVersion" "$PLIST")
           VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "$PLIST")
           echo "Distributing build $VERSION ($BUILD)"
-          bundle exec fastlane distribute_to_testers build_number:"$BUILD" app_version:"$VERSION"
+          bundle exec fastlane distribute_to_testers build_number:"$BUILD" app_version:"$VERSION" changelog_path:"$CHANGELOG_PATH"
 
       - name: Fallback — Upload via Fastlane
         if: steps.altool_upload.outcome == 'failure'
@@ -123,4 +131,4 @@ jobs:
           APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY }}
         run: |
           echo "altool failed, falling back to Fastlane upload_to_testflight..."
-          bundle exec fastlane upload_ipa ipa_path:"$GITHUB_WORKSPACE/OpenTaiko_unsigned.ipa"
+          bundle exec fastlane upload_ipa ipa_path:"$GITHUB_WORKSPACE/OpenTaiko_unsigned.ipa" changelog_path:"$CHANGELOG_PATH"

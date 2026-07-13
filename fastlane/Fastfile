@@ -14,6 +14,16 @@ def asc_api_key
   )
 end
 
+# Reads the What to Test text from options[:changelog_path], nil when absent or empty.
+# TestFlight caps the field at 4000 characters.
+def read_changelog(options)
+  path = options[:changelog_path]
+  return nil if path.to_s.empty? || !File.exist?(path)
+  text = File.read(path).strip
+  return nil if text.empty?
+  text[0, 4000]
+end
+
 platform :ios do
   desc "Resigns an unsigned IPA"
   lane :resign_ipa do |options|
@@ -43,6 +53,7 @@ platform :ios do
       ipa: ipa_path,
       api_key: asc_api_key,
       groups: BETA_GROUPS,
+      changelog: read_changelog(options),
       skip_waiting_for_build_processing: false
     )
   end
@@ -72,6 +83,7 @@ platform :ios do
         build_number: build_number,
         app_version: app_version,
         groups: BETA_GROUPS,
+        changelog: read_changelog(options),
         skip_waiting_for_build_processing: false
       )
     rescue => e
