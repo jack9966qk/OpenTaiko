@@ -2,6 +2,11 @@
 
 ## [0.6.0.99] - 2026-02-13 (Beta)
 
+The per submission crashLog relationship lookup returned NOT_FOUND for
+every item. Request include=crashLog on the collection instead: logs
+that are still retained arrive in the included section of the same
+response, submissions without one simply omit it, and the per item
+requests and their 404 noise go away.
 Dispatch-only workflow that pages through the App Store Connect
 betaFeedbackScreenshotSubmissions and betaFeedbackCrashSubmissions
 endpoints (200 items per page, MAX_PAGES cap) and uploads raw JSON,
