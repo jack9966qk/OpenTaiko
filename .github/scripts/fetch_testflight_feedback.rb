@@ -18,44 +18,50 @@ def item_line(item)
   "- #{meta}: #{comment.empty? ? "(no comment)" : comment}"
 end
 
+# Downloads every https URL found in the resource attributes best effort.
+# The exact URL field names vary across API versions, so match defensively.
+def download_attribute_urls(item, out_dir, prefix, default_ext)
+  urls = JSON.generate(item["attributes"] || {}).scan(%r{https://[^"\\]+}).uniq
+  urls.each_with_index do |url, i|
+    ext = File.extname(URI(url).path)
+    ext = default_ext if ext.empty?
+    File.binwrite(File.join(out_dir, "#{prefix}_#{item["id"]}_#{i}#{ext}"), AscApi.raw_get(url))
+  rescue => e
+    warn "#{prefix} download failed for #{item["id"]}: #{e.message}"
+  end
+end
+
 app_id = AscApi.find_app_id(BUNDLE_ID)
 summary = ["# TestFlight feedback", ""]
 
 {
-  "screenshot_feedback" => "betaFeedbackScreenshotSubmissions",
-  "crash_feedback" => "betaFeedbackCrashSubmissions",
-}.each do |name, resource|
+  "screenshot_feedback" => "betaFeedbackScreenshotSubmissions?limit=200",
+  "crash_feedback" => "betaFeedbackCrashSubmissions?limit=200&include=crashLog",
+}.each do |name, query|
   items = []
-  more = AscApi.each_page("/v1/apps/#{app_id}/#{resource}?limit=200", max_pages: max_pages) do |page, n|
+  included = []
+  more = AscApi.each_page("/v1/apps/#{app_id}/#{query}", max_pages: max_pages) do |page, n|
     File.write(File.join(out_dir, "#{name}_page#{n}.json"), JSON.pretty_generate(page))
     items.concat(page["data"] || [])
+    included.concat(page["included"] || [])
   end
   summary << "## #{name}: #{items.length} item(s)#{more ? " (MAX_PAGES reached, more remain)" : ""}"
   items.each { |item| summary << item_line(item) }
   summary << ""
-  puts "#{name}: #{items.length} item(s)"
+  puts "#{name}: #{items.length} item(s), #{included.length} included resource(s)"
 
   case name
   when "screenshot_feedback"
-    # The image URL field name varies across API versions, so collect every
-    # https URL in the attributes and download them best effort.
-    items.each do |item|
-      urls = JSON.generate(item["attributes"] || {}).scan(%r{https://[^"\\]+}).uniq
-      urls.each_with_index do |url, i|
-        ext = File.extname(URI(url).path)
-        ext = ".png" if ext.empty?
-        File.binwrite(File.join(out_dir, "screenshot_#{item["id"]}_#{i}#{ext}"), AscApi.raw_get(url))
-      rescue => e
-        warn "screenshot download failed for #{item["id"]}: #{e.message}"
-      end
-    end
+    items.each { |item| download_attribute_urls(item, out_dir, "screenshot", ".png") }
   when "crash_feedback"
-    items.each do |item|
-      log = AscApi.get("/v1/#{resource}/#{item["id"]}/crashLog")
-      File.write(File.join(out_dir, "crashlog_#{item["id"]}.json"), JSON.pretty_generate(log))
-    rescue => e
-      warn "crash log fetch failed for #{item["id"]}: #{e.message}"
+    # Crash logs arrive in the included section of the same responses. A
+    # submission whose log is no longer retained simply has nothing included.
+    included.each do |log|
+      File.write(File.join(out_dir, "crashlog_#{log["id"]}.json"), JSON.pretty_generate(log))
+      download_attribute_urls(log, out_dir, "crashlog", ".txt")
     end
+    summary << "#{included.length} crash log(s) still retained for the items above"
+    summary << ""
   end
 end
 
