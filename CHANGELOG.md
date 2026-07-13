@@ -2,6 +2,19 @@
 
 ## [0.6.0.99] - 2026-02-13 (Beta)
 
+Dispatch-only workflow that pages through the App Store Connect
+betaFeedbackScreenshotSubmissions and betaFeedbackCrashSubmissions
+endpoints (200 items per page, MAX_PAGES cap) and uploads raw JSON,
+screenshot images, crash logs and a summary.md as a workflow artifact.
+The release workflow now writes the GitHub release notes to a file and
+passes it to the fastlane lanes as changelog_path, so a build's What to
+Test is the release description (truncated to TestFlight's 4000 chars).
+The beta app description follows fastlane/metadata/beta_app_description.txt
+via a new dispatch-only workflow that PATCHes betaAppLocalizations through
+the App Store Connect API directly (a small JWT client script, since
+Spaceship has no wrapper for it). Dispatch-only so committing the file
+cannot overwrite App Store Connect by accident; a commented push trigger
+turns it into follow-the-repo once the file text is authoritative.
 App Store Connect can return a freshly uploaded build without the
 buildBetaDetail relationship while processing settles; pilot's
 ready_for_beta_submission? then raises 'No build_beta_detail included'
