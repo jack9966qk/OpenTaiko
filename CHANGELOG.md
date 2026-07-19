@@ -2,6 +2,10 @@
 
 ## [0.6.0.99] - 2026-02-13 (Beta)
 
+The apps/betaGroups/builds related paths (/v1/apps/{id}/betaTesters etc.) only
+allow linkage operations and return 403 FORBIDDEN_ERROR on GET_RELATED. Query
+the top-level collections with filter[apps]/filter[betaGroups]/filter[app]/
+filter[builds] instead. Per-build tester count is best-effort with a rescue.
 usage_stats.yml runs a synchronous betaTesters count (total, by invite
 type/state/group, per-build assigned testers). usage_analytics.yml wraps the
 async Analytics Reports API (provision then fetch active devices, installs,
