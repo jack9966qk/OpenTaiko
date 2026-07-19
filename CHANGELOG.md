@@ -2,6 +2,11 @@
 
 ## [0.6.0.99] - 2026-02-13 (Beta)
 
+usage_stats.yml runs a synchronous betaTesters count (total, by invite
+type/state/group, per-build assigned testers). usage_analytics.yml wraps the
+async Analytics Reports API (provision then fetch active devices, installs,
+sessions) plus an optional Sales and Trends units report. Adds a shared
+raw_get_authed helper for the gzip salesReports endpoint.
 The per submission crashLog relationship lookup returned NOT_FOUND for
 every item. Request include=crashLog on the collection instead: logs
 that are still retained arrive in the included section of the same
