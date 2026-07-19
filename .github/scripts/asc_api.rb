@@ -58,11 +58,26 @@ module AscApi
     request(:post, url, body: body)
   end
 
-  # Unauthenticated download for presigned asset URLs (screenshots etc.).
+  # Unauthenticated download for presigned asset URLs (screenshots, analytics
+  # report segments etc.).
   def self.raw_get(url)
     res = Net::HTTP.get_response(URI(url))
     res = Net::HTTP.get_response(URI(res["location"])) if res.is_a?(Net::HTTPRedirection)
     raise "asset GET failed: #{res.code}" unless res.code.to_i.between?(200, 299)
+    res.body
+  end
+
+  # Authenticated GET returning the raw response body, for endpoints that serve
+  # gzip/binary rather than JSON (for example salesReports). Follows one redirect.
+  def self.raw_get_authed(url)
+    uri = url.start_with?("http") ? URI(url) : URI("#{BASE}#{url}")
+    http = Net::HTTP.new(uri.host, uri.port)
+    http.use_ssl = true
+    req = Net::HTTP::Get.new(uri)
+    req["Authorization"] = "Bearer #{token}"
+    res = http.request(req)
+    return raw_get(res["location"]) if res.is_a?(Net::HTTPRedirection)
+    raise "GET #{uri.path} failed: #{res.code} #{res.body}" unless res.code.to_i.between?(200, 299)
     res.body
   end
 

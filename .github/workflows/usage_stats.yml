@@ -1,0 +1,43 @@
+name: Usage stats (TestFlight testers)
+
+# Reports the beta's "number of users": total TestFlight testers with a
+# breakdown by invite type, state and beta group, plus per-build assigned-tester
+# counts. Synchronous - the numbers land on the run summary in seconds, no
+# report-generation wait. For active devices / installations / sessions use the
+# "Usage analytics (App Store)" workflow instead.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  stats:
+    name: Fetch usage stats
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      - name: Fetch usage stats from App Store Connect
+        env:
+          APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY }}
+        run: |
+          bundle exec ruby .github/scripts/usage_stats.rb usage_out
+          cat usage_out/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload usage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: usage-stats
+          path: usage_out
+          retention-days: 30

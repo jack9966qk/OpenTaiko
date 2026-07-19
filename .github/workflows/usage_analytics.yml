@@ -1,0 +1,67 @@
+name: Usage analytics (App Store)
+
+# Real usage data from the App Store Connect Analytics Reports API: active
+# devices, installations, sessions and (with a vendor number) download units.
+# This data is asynchronous - run once with mode=provision to start report
+# generation, wait up to ~48h for Apple to populate, then run mode=fetch.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'provision (one-time setup) or fetch'
+        type: choice
+        options: [fetch, provision]
+        default: fetch
+      granularity:
+        description: 'Report granularity'
+        type: choice
+        options: [DAILY, WEEKLY, MONTHLY]
+        default: DAILY
+      vendor_number:
+        description: 'Vendor number to also pull download units (optional)'
+        required: false
+        default: ''
+      report_date:
+        description: 'Sales report date YYYY-MM-DD (optional, default 3 days ago)'
+        required: false
+        default: ''
+
+jobs:
+  analytics:
+    name: Fetch usage analytics
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      - name: Fetch analytics from App Store Connect
+        env:
+          APP_STORE_CONNECT_API_KEY_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
+          APP_STORE_CONNECT_API_KEY_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY_KEY }}
+          GRANULARITY: ${{ inputs.granularity }}
+          VENDOR_NUMBER: ${{ inputs.vendor_number }}
+          REPORT_DATE: ${{ inputs.report_date }}
+        run: |
+          bundle exec ruby .github/scripts/analytics_reports.rb "${{ inputs.mode }}" analytics_out
+          if [ -f analytics_out/summary.md ]; then
+            cat analytics_out/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload analytics artifact
+        if: ${{ inputs.mode == 'fetch' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: usage-analytics
+          path: analytics_out
+          retention-days: 30
